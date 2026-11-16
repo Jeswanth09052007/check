@@ -101,10 +101,11 @@ export default function TradingWorkspace({ user, initialSymbol = "RELIANCE" }) {
           <button className={"btn "+(side==="BUY"?"btn-green":"btn-secondary")} disabled={busy} aria-pressed={side==="BUY"} onClick={()=>setSide("BUY")}>Buy</button>
           <button className={"btn "+(side==="SELL"?"btn-primary":"btn-secondary")} disabled={busy} aria-pressed={side==="SELL"} onClick={()=>setSide("SELL")}>Sell</button>
         </div>
-        <StockOrderForm key={key} id="trade" instrument={selected && {...selected, symbol: selected.trading_symbol}}
+        {selected ? <StockOrderForm key={key} id="trade" instrument={{...selected, symbol: selected.trading_symbol}}
           side={side} owned={holding?.qty||0} cash={portfolio.data.cash} quote={hasQuote ? last : NaN}
           disabled={busy} onBusyChange={value=>{setBusy(value);if(value){setError("");setNotice("");}}}
           onPlaced={message=>{portfolio.reload();setNotice(message);}} />
+          : <p>{searchReady ? "Select a stock to place a paper order." : "Loading instruments…"}</p>}
       </Card>
     </div>
     <div className="stock-account">
