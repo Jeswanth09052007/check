@@ -19,7 +19,7 @@ import {
 } from "../components/Management";
 import { Courses, Quizzes, Uploads } from "../components/Learning";
 import Institutes from "../components/Institutes";
-import { Subscription, Revenue, Earnings } from "../components/Commerce";
+import { Subscription, Revenue, Earnings, CourseCoordination } from "../components/Commerce";
 import {
   Card,
   Stats,
@@ -200,7 +200,7 @@ export default function Dashboard({ user, onUser }) {
   const slots = {
     "api-status": platform.error ? "Unavailable" : platform.loading ? "Connecting" : "Online",
     "subscription-nav":
-      user.subscriptionTier === "PRO" ? "Pro Plan" : "Basic Plan · Upgrade",
+      user.subscriptionTier === "PLUS" ? "Plus Plan" : user.subscriptionTier === "PRO" ? "Pro Plan" : "Basic Plan · Upgrade",
     "nav-name": user.firstName + " " + user.lastName,
     "nav-admin-name": user.firstName + " " + user.lastName,
     "nav-admin-team": user.adminTeam?.replaceAll("_", " ") || "Super Admin",
@@ -272,6 +272,11 @@ export default function Dashboard({ user, onUser }) {
             </button>
           </div>
         )}
+        {(isSuperAdmin || (user.role === "admin" && !isPayment)) &&
+          <details className="mb-16">
+            <summary>Plus course coordination</summary>
+            <CourseCoordination {...props} />
+          </details>}
         <input
           className="form-input mb-16"
           aria-label="Search users"
@@ -424,7 +429,7 @@ export default function Dashboard({ user, onUser }) {
     "leaderboard-container": leaderboard,
     "students-list": leaderboard,
     "upcoming-sessions-overview": sessionView,
-    "overview-assignments": assignmentView,
+    "overview-assignments": user.role === "instructor" ? <>{assignmentView}<CourseCoordination {...props} /></> : assignmentView,
     "view-dashboard": <><div className="grid-2"><Card title="Platform Overview"><div className="overview-counts"><p>{platform.data.users||0} total accounts</p><p>{platform.data.publishedCourses||0} published courses · {platform.data.enrollments||0} enrollments</p><p>{platform.data.trades||0} filled paper trades · {platform.data.quizAttempts||0} quiz attempts</p></div><p className="card-subtitle">Live platform totals · refreshes every 5 seconds</p></Card><Card title="Recent System Activity"><SystemActivity report={platform}/></Card></div><Card title="Platform Analytics Report" subtitle="Recorded account, trading and learning events"><PlatformAnalytics report={platform}/></Card></>,
     "activity-list": <SystemActivity report={platform} />,
     "recent-activity": <Activity notifications={notifications.data} />,

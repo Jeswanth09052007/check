@@ -4,7 +4,7 @@ import * as path from 'path';
 import { hashPassword } from '../common/password.util';
 
 export type Role = 'superuser'|'admin'|'instructor'|'provider'|'learner';
-export interface User { id:string; firstName:string; lastName:string; email:string; password?:string; role:Role; status:string; skillPoints:number; virtualBalance:number; portfolioValue:number; tradingLimit:number; startingBalance:number; instructorId?:string; studentIds?:string[]; organization?:string; organizationId?:string; institution?:string; adminTeam?:'USER_ADMIN'|'PAYMENT_ADMIN'; subscriptionTier?:'FREE'|'PRO'; providerVerified?:boolean; instructorMonthlyRate?:number; instructorBonus?:number; expertise?:string; learnerLevel?:string; [key:string]:any; }
+export interface User { id:string; firstName:string; lastName:string; email:string; password?:string; role:Role; status:string; skillPoints:number; virtualBalance:number; portfolioValue:number; tradingLimit:number; startingBalance:number; instructorId?:string; studentIds?:string[]; organization?:string; organizationId?:string; institution?:string; adminTeam?:'USER_ADMIN'|'PAYMENT_ADMIN'; subscriptionTier?:'FREE'|'PRO'|'PLUS'; courseCoordinatorId?:string; providerVerified?:boolean; instructorMonthlyRate?:number; instructorBonus?:number; expertise?:string; learnerLevel?:string; [key:string]:any; }
 export interface Stock { symbol:string; name:string; price:number; change:number; changeAbs:number; open:number; high:number; low:number; volume:number; cap:string; sector:string; marketCap:string; vol:string; dataSource:string; lastTickAt?:string; replayIndex?:number; }
 export interface Candle { datetime:string; open:number; high:number; low:number; close:number; volume:number; }
 export interface Trade { id:string; learnerId:string; symbol:string; type:'BUY'|'SELL'; qty:number; price:number; total:number; date:string; status:string; }
@@ -50,8 +50,22 @@ export class DataStore implements OnModuleInit {
     RELIANCE:{name:'Reliance Industries',sector:'Energy',cap:'Large Cap'}, TCS:{name:'Tata Consultancy Services',sector:'IT',cap:'Large Cap'}, INFY:{name:'Infosys',sector:'IT',cap:'Large Cap'}, HDFCBANK:{name:'HDFC Bank',sector:'Banking',cap:'Large Cap'}, ICICIBANK:{name:'ICICI Bank',sector:'Banking',cap:'Large Cap'}, SBIN:{name:'State Bank of India',sector:'Banking',cap:'Large Cap'}, AXISBANK:{name:'Axis Bank',sector:'Banking',cap:'Mid Cap'}, KOTAKBANK:{name:'Kotak Mahindra Bank',sector:'Banking',cap:'Large Cap'}, ITC:{name:'ITC Limited',sector:'FMCG',cap:'Large Cap'}, HINDUNILVR:{name:'Hindustan Unilever',sector:'FMCG',cap:'Large Cap'}, NESTLEIND:{name:'Nestle India',sector:'FMCG',cap:'Large Cap'}, DABUR:{name:'Dabur India',sector:'FMCG',cap:'Large Cap'}, BHARTIARTL:{name:'Bharti Airtel',sector:'Telecom',cap:'Large Cap'}, SUNPHARMA:{name:'Sun Pharmaceutical',sector:'Pharma',cap:'Large Cap'}, DRREDDY:{name:"Dr. Reddy's Laboratories",sector:'Pharma',cap:'Large Cap'}, CIPLA:{name:'Cipla Limited',sector:'Pharma',cap:'Large Cap'}, MARUTI:{name:'Maruti Suzuki',sector:'Automobile',cap:'Large Cap'}, 'BAJAJ-AUTO':{name:'Bajaj Auto',sector:'Automobile',cap:'Large Cap'}, 'M&M':{name:'Mahindra & Mahindra',sector:'Automobile',cap:'Large Cap'}, LT:{name:'Larsen & Toubro',sector:'Infrastructure',cap:'Large Cap'}, ULTRACEMCO:{name:'UltraTech Cement',sector:'Infrastructure',cap:'Large Cap'}, ADANIENT:{name:'Adani Enterprises',sector:'Infrastructure',cap:'Large Cap'}, ADANIPORTS:{name:'Adani Ports',sector:'Infrastructure',cap:'Mid Cap'}, WIPRO:{name:'Wipro Limited',sector:'IT',cap:'Mid Cap'}, HCLTECH:{name:'HCL Technologies',sector:'IT',cap:'Large Cap'}, TECHM:{name:'Tech Mahindra',sector:'IT',cap:'Large Cap'}, MPHASIS:{name:'Mphasis Limited',sector:'IT',cap:'Mid Cap'}, PERSISTENT:{name:'Persistent Systems',sector:'IT',cap:'Mid Cap'}, TATAMOTORS:{name:'Tata Motors',sector:'Automobile',cap:'Mid Cap'}, HEROMOTOCO:{name:'Hero MotoCorp',sector:'Automobile',cap:'Mid Cap'}, EICHERMOT:{name:'Eicher Motors',sector:'Automobile',cap:'Mid Cap'}, LUPIN:{name:'Lupin Limited',sector:'Pharma',cap:'Mid Cap'}, DIVISLAB:{name:"Divi's Laboratories",sector:'Pharma',cap:'Mid Cap'}, ALKEM:{name:'Alkem Laboratories',sector:'Pharma',cap:'Mid Cap'}, TITAN:{name:'Titan Company',sector:'Consumer',cap:'Mid Cap'}, GODREJCP:{name:'Godrej Consumer Products',sector:'Consumer',cap:'Mid Cap'}, MARICO:{name:'Marico Limited',sector:'FMCG',cap:'Mid Cap'}, POWERGRID:{name:'Power Grid Corp',sector:'Power',cap:'Mid Cap'}, NTPC:{name:'NTPC Limited',sector:'Power',cap:'Mid Cap'}, TATAPOWER:{name:'Tata Power Company',sector:'Power',cap:'Mid Cap'}, BAJFINANCE:{name:'Bajaj Finance',sector:'NBFC',cap:'Mid Cap'}, BAJAJFINSV:{name:'Bajaj Finserv',sector:'NBFC',cap:'Mid Cap'}, MUTHOOTFIN:{name:'Muthoot Finance',sector:'NBFC',cap:'Mid Cap'}, NAUKRI:{name:'Info Edge (Naukri)',sector:'Technology',cap:'Small Cap'}, INDIAMART:{name:'IndiaMART InterMESH',sector:'Technology',cap:'Small Cap'}, PAYTM:{name:'Paytm (One97 Comm.)',sector:'Fintech',cap:'Small Cap'}, POLICYBZR:{name:'PB Fintech',sector:'Fintech',cap:'Small Cap'}, NYKAA:{name:'Nykaa',sector:'E-commerce',cap:'Small Cap'}, SHOPERSTOP:{name:'Shoppers Stop',sector:'E-commerce',cap:'Small Cap'}, AUROPHARMA:{name:'Aurobindo Pharma',sector:'Pharma',cap:'Small Cap'}, GLENMARK:{name:'Glenmark Pharmaceuticals',sector:'Pharma',cap:'Small Cap'}, ZEEL:{name:'Zee Entertainment',sector:'Media',cap:'Small Cap'}, IRCTC:{name:'IRCTC',sector:'Travel',cap:'Small Cap'}, ONGC:{name:'Oil & Natural Gas Corp',sector:'Energy',cap:'Large Cap'}, BPCL:{name:'Bharat Petroleum Corp',sector:'Energy',cap:'Large Cap'}, IOC:{name:'Indian Oil Corporation',sector:'Energy',cap:'Large Cap'}, IDFCFIRSTB:{name:'IDFC First Bank',sector:'Banking',cap:'Mid Cap'}, BALKRISIND:{name:'Balkrishna Industries',sector:'Automobile',cap:'Mid Cap'}, BANDHANBNK:{name:'Bandhan Bank',sector:'Banking',cap:'Mid Cap'}, TVSMOTOR:{name:'TVS Motor',sector:'Automobile',cap:'Mid Cap'}
   };
 
-  onModuleInit() { this.seed(); if(!fs.existsSync(this.stateFile)&&process.env.DEMO_MODE==='false')this.productionSeed(); this.restore(); if (!fs.existsSync(this.stateFile) && process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test' && process.env.DEMO_MODE === 'true') this.seedDemoAccounts(); this.loadCsvStocks(); this.save(); this.logger.log(`Loaded ${this.stocks.length} stocks, ${Object.keys(this.candles).length} minute datasets, ${this.users.length} users.`); }
+  onModuleInit() { this.seed(); if(!fs.existsSync(this.stateFile)&&process.env.DEMO_MODE==='false')this.productionSeed(); this.restore(); this.configureLearnerPlans(); if (!fs.existsSync(this.stateFile) && process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test' && process.env.DEMO_MODE === 'true') this.seedDemoAccounts(); this.loadCsvStocks(); this.save(); this.logger.log(`Loaded ${this.stocks.length} stocks, ${Object.keys(this.candles).length} minute datasets, ${this.users.length} users.`); }
   id(prefix:string){ return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,7)}`; }
+  private configureLearnerPlans() {
+    const basic = this.subscriptionPlans.find(plan => plan.id === 'free');
+    if (basic) Object.assign(basic, { name: 'Basic', features: ['Paper trading', 'Watchlists', 'Portfolio and order history'] });
+    const price = Number(process.env.PLUS_MONTHLY_PRICE_INR);
+    const plus = {
+      id: 'plus_monthly', code: 'PLUS', name: 'Plus Monthly', audience: 'B2C',
+      price: Number.isFinite(price) && price >= 1 ? Math.round(price * 100) / 100 : 0,
+      available: Number.isFinite(price) && price >= 1, billing: 'Monthly', days: 30,
+      features: ['All Pro benefits', 'Dedicated course coordinator'],
+    };
+    this.subscriptionPlans = this.subscriptionPlans.filter(plan => plan.id !== plus.id);
+    this.subscriptionPlans.push(plus);
+  }
+
   private seedDemoAccounts() {
     const firstNames = ['Aarav', 'Aditi', 'Ananya', 'Arjun', 'Diya', 'Ishaan', 'Kavya', 'Meera', 'Neel', 'Riya', 'Vihaan', 'Zoya'];
     const lastNames = ['Das', 'Gupta', 'Iyer', 'Joshi', 'Kumar', 'Menon', 'Nair', 'Patel', 'Rao', 'Reddy', 'Shah'];
@@ -286,7 +300,27 @@ export class DataStore implements OnModuleInit {
   findUserByEmail(email:string){ return this.users.find(u => u.email.toLowerCase() === String(email || '').toLowerCase()); }
   safeUser(user:any){ if(!user) return null; const { password, ...safe } = user; return safe; }
   safeUsers(users:any[]){ return (users||[]).map(u=>this.safeUser(u)); }
-  hasPro(userId:string){ const u=this.getUser(userId); if(!u || u.subscriptionTier!=='PRO') return false; const active=this.subscriptions.find((sub:any)=>sub.customerType==='USER'&&sub.customerId===userId&&sub.status==='ACTIVE'); if(!active) return true; if(active.renewsAt && new Date(active.renewsAt).getTime()<=Date.now()){ active.status='EXPIRED'; u.subscriptionTier='FREE'; return false; } return true; }
+  hasPro(userId: string) {
+    const user = this.getUser(userId);
+    if (!user || !['PRO', 'PLUS'].includes(user.subscriptionTier || '')) return false;
+    const active = this.subscriptions.find(sub => sub.customerType === 'USER' &&
+      sub.customerId === userId && sub.status === 'ACTIVE');
+    if (active?.renewsAt && new Date(active.renewsAt).getTime() <= Date.now()) {
+      active.status = 'EXPIRED';
+      const now = Date.now();
+      const next = this.subscriptions.find(sub => sub.customerType === 'USER' &&
+        sub.customerId === userId && sub.status === 'SCHEDULED' &&
+        new Date(sub.startedAt).getTime() <= now && new Date(sub.renewsAt).getTime() > now);
+      if (next) next.status = 'ACTIVE';
+      user.subscriptionTier = next ? 'PRO' : 'FREE';
+      this.save();
+      return Boolean(next);
+    }
+    return Boolean(active) || user.subscriptionTier === 'PRO';
+  }
+  hasPlus(userId: string) {
+    return this.hasPro(userId) && this.getUser(userId)?.subscriptionTier === 'PLUS';
+  }
   ensureCourseExists(courseId:string){ return this.courses.find(c => c.id === courseId); }
   ensureLearnerExists(learnerId:string){ return this.users.find(u => u.id === learnerId && u.role === 'learner'); }
 

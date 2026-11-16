@@ -80,11 +80,16 @@ export class PaymentsService {
   async createProOrder(dto:CreateProRazorpayOrderDto,actorId?:string){
     const user=this.requireAuthenticatedLearner(actorId);
     if(dto.userId!==user.id) throw new ForbiddenException('JWT learner identity does not match the requested subscription user.');
-    const plan=this.db.subscriptionPlans.find((p:any)=>p.id===dto.planId&&p.audience==='B2C'&&p.code==='PRO'); if(!plan) throw new NotFoundException('Pro subscription plan not found.');
+    const plan=this.db.subscriptionPlans.find((p:any)=>p.id===dto.planId&&p.audience==='B2C'&&['PRO','PLUS'].includes(p.code)&&p.available!==false); if(!plan) throw new NotFoundException('Subscription plan is unavailable.');
+    if (plan.code === 'PRO' && user.subscriptionTier === 'PLUS' &&
+      this.db.subscriptions.some(item => item.customerType === 'USER' && item.customerId === user.id &&
+        item.status === 'ACTIVE' && new Date(item.renewsAt).getTime() > Date.now())) {
+      throw new BadRequestException('Your Plus membership already includes Pro.');
+    }
     const amount=Math.round(Number(plan.price)*100); if(amount<100) throw new BadRequestException('Invalid subscription amount.');
     const receipt=`pro_${user.id}_${Date.now()}`.slice(0,40);
     const order=await this.razorpayPost('/v1/orders',{amount,currency:'INR',receipt,notes:{purpose:'PRO_SUBSCRIPTION',userId:user.id,planId:plan.id}});
-    const intent={id:this.db.id('rpi'),provider:'RAZORPAY',purpose:'PRO_SUBSCRIPTION',subjectId:user.id,planId:plan.id,amount:Number(plan.price),amountSubunits:amount,currency:'INR',orderId:order.id,status:'CREATED',createdAt:new Date().toISOString()};
+    const intent={id:this.db.id('rpi'),provider:'RAZORPAY',purpose:'PRO_SUBSCRIPTION',subjectId:user.id,planId:plan.id,amount:Number(plan.price),amountSubunits:amount,currency:'INR',orderId:order.id,status:'CREATED',createdAt:new Date().toISOString(),tier:plan.code,days:plan.days};
     this.db.paymentIntents.push(intent);
     this.db.audit('PAYMENT_ORDER_CREATED',user.id,{purpose:intent.purpose,orderId:order.id,amount:intent.amount,planId:plan.id});
     return {orderId:order.id,amount:order.amount,currency:order.currency,keyId:this.keyId(),name:'IndAI',description:`${plan.name} subscription`,plan:{id:plan.id,name:plan.name,price:plan.price,billing:plan.billing},prefill:{name:`${user.firstName} ${user.lastName}`,email:user.email,contact:user.phone||''}};
@@ -95,7 +100,7 @@ export class PaymentsService {
     if(dto.userId!==user.id) throw new ForbiddenException('JWT learner identity does not match the payment verification user.');
     const intent=this.db.paymentIntents.find((i:any)=>i.orderId===dto.razorpay_order_id&&i.purpose==='PRO_SUBSCRIPTION'&&i.subjectId===dto.userId&&i.planId===dto.planId);
     if(!intent) throw new NotFoundException('Razorpay subscription order was not found or does not match this learner/plan.');
-    if(intent.status==='PAID') { const tx=this.db.transactions.find((t:any)=>t.razorpayOrderId===intent.orderId); const sub=this.db.subscriptions.find((x:any)=>x.razorpayOrderId===intent.orderId); return {subscription:sub||null,transaction:tx||null,receipt:intent.paymentId?`RZP-${intent.paymentId}`:null,tier:'PRO',alreadyProcessed:true}; }
+    if(intent.status==='PAID') { const tx=this.db.transactions.find((t:any)=>t.razorpayOrderId===intent.orderId); const sub=this.db.subscriptions.find((x:any)=>x.razorpayOrderId===intent.orderId); return {subscription:sub||null,transaction:tx||null,receipt:intent.paymentId?`RZP-${intent.paymentId}`:null,tier:intent.tier||'PRO',alreadyProcessed:true}; }
     this.verifyCheckoutSignature(intent.orderId,dto.razorpay_payment_id,dto.razorpay_signature);
     await this.requireCaptured(intent,dto.razorpay_payment_id);
     return this.finalizeProIntent(intent,dto.razorpay_payment_id);
@@ -103,17 +108,32 @@ export class PaymentsService {
 
   private finalizeProIntent(intent:any,paymentId:string){
     const existing=this.db.transactions.find((t:any)=>t.razorpayPaymentId===paymentId || t.razorpayOrderId===intent.orderId);
-    if(existing && existing.status==='PAID') { const sub=this.db.subscriptions.find((x:any)=>x.razorpayOrderId===intent.orderId); return {subscription:sub||null,transaction:existing,receipt:existing.razorpayPaymentId?`RZP-${existing.razorpayPaymentId}`:null,tier:'PRO',alreadyProcessed:true}; }
+    if(existing && existing.status==='PAID') { const sub=this.db.subscriptions.find((x:any)=>x.razorpayOrderId===intent.orderId); return {subscription:sub||null,transaction:existing,receipt:existing.razorpayPaymentId?`RZP-${existing.razorpayPaymentId}`:null,tier:intent.tier||'PRO',alreadyProcessed:true}; }
     const user=this.db.getUser(intent.subjectId); if(!user||user.role!=='learner') throw new NotFoundException('Learner not found.');
-    const plan=this.db.subscriptionPlans.find((p:any)=>p.id===intent.planId&&p.code==='PRO'); if(!plan) throw new NotFoundException('Pro plan not found.');
-    this.db.subscriptions.filter((s:any)=>s.customerType==='USER'&&s.customerId===user.id&&s.status==='ACTIVE').forEach((s:any)=>s.status='SUPERSEDED');
-    const now=new Date(); const days=Number(plan.days||30);
-    const sub={id:this.db.id('sub'),customerType:'USER',customerId:user.id,planId:plan.id,status:'ACTIVE',amount:Number(plan.price),startedAt:now.toISOString(),renewsAt:new Date(now.getTime()+days*86400000).toISOString(),gateway:'RAZORPAY',razorpayOrderId:intent.orderId,razorpayPaymentId:paymentId};
-    const tx:any={id:this.db.id('txn'),type:'PRO_SUBSCRIPTION',customerType:'USER',customerId:user.id,amount:Number(plan.price),currency:'INR',status:'PAID',gateway:'RAZORPAY',platformRevenue:Number(plan.price),razorpayOrderId:intent.orderId,razorpayPaymentId:paymentId,createdAt:now.toISOString()};
-    const result={subscription:sub,transaction:tx,receipt:`RZP-${paymentId}`,tier:'PRO'};
-    this.db.subscriptions.push(sub); this.db.transactions.push(tx); user.subscriptionTier='PRO'; intent.status='PAID'; intent.paymentId=paymentId; intent.paidAt=now.toISOString();
-    this.db.notifications.push({id:this.db.id('n'),userId:user.id,message:`IndAI Pro activated through Razorpay (${plan.name}).`,type:'success',read:false,createdAt:now.toISOString()});
-    this.db.audit('RAZORPAY_PAYMENT_VERIFIED',user.id,{purpose:'PRO_SUBSCRIPTION',orderId:intent.orderId,paymentId,amount:plan.price});
+    const plan=this.db.subscriptionPlans.find((p:any)=>p.id===intent.planId&&['PRO','PLUS'].includes(p.code)); if(!plan) throw new NotFoundException('Subscription plan not found.');
+    const tier = intent.tier === 'PLUS' || plan.code === 'PLUS' ? 'PLUS' : 'PRO';
+    const amount = Number(intent.amount ?? plan.price);
+    const current = this.db.subscriptions.find((item:any)=>item.customerType==='USER'&&item.customerId===user.id&&item.status==='ACTIVE');
+    const preservePlus = tier === 'PRO' && user.subscriptionTier === 'PLUS' && current &&
+      new Date(current.renewsAt).getTime() > Date.now();
+    if (!preservePlus) this.db.subscriptions.filter((s:any)=>s.customerType==='USER'&&s.customerId===user.id&&s.status==='ACTIVE').forEach((s:any)=>s.status='SUPERSEDED');
+    const now = new Date();
+    const days = Number(intent.days || plan.days || 30);
+    const priorEnd = current ? new Date(current.renewsAt).getTime() : 0;
+    const scheduledEnds = preservePlus ? this.db.subscriptions
+      .filter(item => item.customerType === 'USER' && item.customerId === user.id && item.status === 'SCHEDULED')
+      .map(item => new Date(item.renewsAt).getTime()).filter(Number.isFinite) : [];
+    const scheduledStart = new Date(Math.max(now.getTime(), priorEnd || 0, ...scheduledEnds));
+    const start = preservePlus ? scheduledStart : now;
+    const expiry = new Date(scheduledStart.getTime() + days * 86400000).toISOString();
+    const sub={id:this.db.id('sub'),customerType:'USER',customerId:user.id,planId:plan.id,status:preservePlus?'SCHEDULED':'ACTIVE',amount,startedAt:start.toISOString(),renewsAt:expiry,gateway:'RAZORPAY',razorpayOrderId:intent.orderId,razorpayPaymentId:paymentId};
+    const tx:any={id:this.db.id('txn'),type:'PRO_SUBSCRIPTION',customerType:'USER',customerId:user.id,amount,currency:'INR',status:'PAID',gateway:'RAZORPAY',platformRevenue:amount,razorpayOrderId:intent.orderId,razorpayPaymentId:paymentId,createdAt:now.toISOString()};
+    const effectiveTier = preservePlus ? 'PLUS' : tier;
+    const result={subscription:sub,transaction:tx,receipt:`RZP-${paymentId}`,tier:effectiveTier};
+    this.db.subscriptions.push(sub); this.db.transactions.push(tx); user.subscriptionTier=effectiveTier;
+    intent.tier=effectiveTier; intent.status='PAID'; intent.paymentId=paymentId; intent.paidAt=now.toISOString();
+    this.db.notifications.push({id:this.db.id('n'),userId:user.id,message:`IndAI ${effectiveTier === 'PLUS' ? 'Plus' : 'Pro'} payment confirmed (${plan.name}).`,type:'success',read:false,createdAt:now.toISOString()});
+    this.db.audit('RAZORPAY_PAYMENT_VERIFIED',user.id,{purpose:'PRO_SUBSCRIPTION',orderId:intent.orderId,paymentId,amount,tier:effectiveTier});
     return result;
   }
 

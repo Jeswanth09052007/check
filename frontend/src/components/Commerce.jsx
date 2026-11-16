@@ -45,18 +45,68 @@ function InstructorGuidance({ notify }) {
   </Card>;
 }
 
+export function CourseCoordination({ user, notify }) {
+  const resource = useResource("/admin/course-coordination", {}, 5000);
+  const [selections, setSelections] = useState({});
+  const [busy, setBusy] = useState(false);
+  if (user.role === "learner") {
+    if (resource.data.eligible !== true) return null;
+    return <Card title="Course coordinator">
+      <Notice error={resource.error} />
+      <p>{resource.data.coordinator?.name || "Awaiting coordinator assignment"}</p>
+    </Card>;
+  }
+  const { learners = [], instructors = [] } = resource.data;
+  if (user.role === "instructor" && !learners.length) return null;
+
+  async function assign(event, learnerId) {
+    event.preventDefault();
+    const choice = selections[learnerId];
+    if (busy || !choice) return;
+    setBusy(true);
+    try {
+      await api("/admin/course-coordination/" + encodeURIComponent(learnerId) + "/" +
+        encodeURIComponent(choice), "POST", {});
+      setSelections(current => ({ ...current, [learnerId]: undefined }));
+      resource.reload();
+      notify("Course coordinator assigned.");
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <Card title="Course coordination">
+    <Notice error={resource.error} />
+    {resource.loading ? <p role="status">Loading…</p> : !learners.length && <p>No active Plus learners.</p>}
+    {user.role === "instructor" ? <ul>{learners.map(learner => <li key={learner.id}>{learner.name}</li>)}</ul> :
+      learners.map(learner => <form key={learner.id} className="mb-16" onSubmit={event => assign(event, learner.id)}>
+        <label className="form-label" htmlFor={"coordinator-" + learner.id}>{learner.name}</label>
+        <select id={"coordinator-" + learner.id} className="form-select"
+          value={selections[learner.id] ?? learner.coordinatorId ?? ""}
+          onChange={event => setSelections({ ...selections, [learner.id]: event.target.value })}>
+          <option value="">Select coordinator</option>
+          {instructors.map(instructor => <option key={instructor.id} value={instructor.id}>{instructor.name}</option>)}
+        </select>
+        <button type="submit" className="btn btn-secondary mt-16" disabled={busy || !selections[learner.id]}>Assign coordinator</button>
+      </form>)}
+  </Card>;
+}
+
 export function Subscription({ user, notify, onUser }) {
   const plans = useResource("/commercial/plans"),
     sub = useResource("/commercial/subscriptions/user/" + user.id, {});
   return (
     <>
-      <Card title="Your Subscription" subtitle="Basic and Pro access">
+      <Card title="Your Subscription" subtitle="Basic, Pro, and Plus access">
         <Notice error={sub.error} />
         <GatewayStatus />
-        <span className="badge badge-blue">{sub.data.tier === "PRO" ? "Pro" : "Basic"}</span>
+        <span className="badge badge-blue">{sub.data.tier === "PLUS" ? "Plus" : sub.data.tier === "PRO" ? "Pro" : "Basic"}</span>
         <p>{sub.data.plan?.name || "Basic paper trading plan"}</p>
       </Card>
       <InstructorGuidance notify={notify} />
+      <CourseCoordination user={user} notify={notify} />
       <div className="grid-3">
         {plans.data
           .filter((p) => p.audience === "B2C")
@@ -64,14 +114,14 @@ export function Subscription({ user, notify, onUser }) {
             <Card
               key={p.id}
               title={p.name}
-              subtitle={money(p.price) + " · " + p.billing}
+              subtitle={p.available === false ? "Checkout unavailable" : money(p.price) + " · " + p.billing}
             >
               <ul>
                 {p.features.map((f) => (
                   <li key={f}>{f}</li>
                 ))}
               </ul>
-              {p.price > 0 && (
+              {p.available !== false && p.price > 0 && !(sub.data.tier === "PLUS" && p.code === "PRO") && (
                 <button
                   className="btn btn-primary"
                   onClick={async () => {
@@ -79,7 +129,7 @@ export function Subscription({ user, notify, onUser }) {
                       await checkout({ user, planId: p.id });
                       sub.reload();
                       onUser?.(await api("/auth/me"));
-                      notify("Payment verified. Pro is active.");
+                      notify("Payment verified. Your subscription is active.");
                     } catch (e) {
                       notify(e.message);
                     }

@@ -42,6 +42,48 @@ export class AdminController {
     this.requireUserAdmin(userId);
     return {success:true,data:this.mapping.assign(body.learnerId,body.instructorId,this.db.getUser(userId!)!)};
   }
+  @Get('course-coordination') @Roles('learner','instructor','admin','superuser')
+  courseCoordination(@Req() req: any) {
+    const actor = req.user;
+    const profile = (user: { id: string; firstName: string; lastName: string }) =>
+      ({ id: user.id, name: `${user.firstName} ${user.lastName}` });
+    if (actor.role === 'learner') {
+      const learner = this.db.getUser(actor.id)!;
+      const eligible = this.db.hasPlus(learner.id);
+      const coordinator = eligible && learner.courseCoordinatorId ? this.db.getUser(learner.courseCoordinatorId) : undefined;
+      return { success:true, data:{ eligible, coordinator: coordinator?.status === 'active' ? profile(coordinator) : null } };
+    }
+    if (actor.role !== 'instructor') this.requireUserAdmin(actor.id);
+    const learners = this.db.users.filter(user => user.role === 'learner' && user.status === 'active' &&
+      (actor.role !== 'instructor' || user.courseCoordinatorId === actor.id) && this.db.hasPlus(user.id));
+    if (actor.role === 'instructor') return { success:true, data:{ learners: learners.map(profile) } };
+    const instructors = this.db.users.filter(user => user.role === 'instructor' && user.status === 'active').map(profile);
+    return { success:true, data:{ instructors, learners: learners.map(user => ({ ...profile(user), coordinatorId: user.courseCoordinatorId })) } };
+  }
+
+  @Post('course-coordination/:learnerId/:coordinatorId') @Roles('admin','superuser')
+  assignCoordinator(@Param('learnerId') learnerId: string, @Param('coordinatorId') coordinatorId: string, @Req() req: any) {
+    this.requireUserAdmin(req.user.id);
+    const learner = this.db.getUser(learnerId);
+    const coordinator = this.db.getUser(coordinatorId);
+    if (!learner || learner.role !== 'learner' || learner.status !== 'active' || !this.db.hasPlus(learnerId)) {
+      throw new BadRequestException('Select an active Plus learner.');
+    }
+    if (!coordinator || coordinator.role !== 'instructor' || coordinator.status !== 'active') {
+      throw new BadRequestException('Select an active instructor to coordinate courses.');
+    }
+    if (learner.courseCoordinatorId !== coordinatorId) {
+      learner.courseCoordinatorId = coordinatorId;
+      const createdAt = new Date().toISOString();
+      for (const [userId, message] of [
+        [learnerId, `${coordinator.firstName} ${coordinator.lastName} is your course coordinator.`],
+        [coordinatorId, `You are the course coordinator for ${learner.firstName} ${learner.lastName}.`],
+      ]) this.db.notifications.push({ id: this.db.id('n'), userId, message, createdAt, read:false, type:'info' });
+      this.db.audit('COORDINATOR_ASSIGNED', req.user.id, { learnerId, coordinatorId });
+    }
+    return { success:true, data:{ learnerId, coordinatorId } };
+  }
+
   @Get('learner-guidance') @Roles('learner')
   guidance(@Req() req: any) {
     return { success: true, data: this.mapping.guidance(req.user) };
