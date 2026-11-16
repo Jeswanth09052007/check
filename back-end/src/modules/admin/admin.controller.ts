@@ -42,6 +42,16 @@ export class AdminController {
     this.requireUserAdmin(userId);
     return {success:true,data:this.mapping.assign(body.learnerId,body.instructorId,this.db.getUser(userId!)!)};
   }
+  @Get('learner-guidance') @Roles('learner')
+  guidance(@Req() req: any) {
+    return { success: true, data: this.mapping.guidance(req.user) };
+  }
+
+  @Post('learner-guidance/:instructorId') @Roles('learner')
+  requestInstructor(@Param('instructorId') id: string, @Req() req: any) {
+    return { success: true, data: this.mapping.requestInstructor(id, req.user) };
+  }
+
   @Get('mapping-requests') @Roles('superuser','admin','instructor')
   requests(@Req() req:any){
     if(req.user.role==='admin')this.requireUserAdmin(req.user.id);

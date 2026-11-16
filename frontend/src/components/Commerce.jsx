@@ -3,17 +3,60 @@ import { api, money } from "../services/api";
 import { checkout } from "../services/payments";
 import { useResource } from "../hooks/useResource";
 import { Card, Stats, Editor, Modal, Table, Notice } from "./Common";
+function InstructorGuidance({ notify }) {
+  const guidance = useResource("/admin/learner-guidance", {}, 5000);
+  const [instructorId, setInstructorId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const { eligible, instructor, latestRequest, pending, instructors = [] } = guidance.data;
+  async function request(event) {
+    event.preventDefault();
+    if (!instructorId || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api("/admin/learner-guidance/" + encodeURIComponent(instructorId), "POST", {});
+      setInstructorId("");
+      guidance.reload();
+      notify("Instructor request sent.");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return <Card title="Instructor guidance">
+    <Notice error={error || guidance.error} />
+    {guidance.loading && <p role="status">Loading instructor options…</p>}
+    {instructor && <p>Assigned instructor <strong>{instructor.name}</strong></p>}
+    {pending && <p role="status">Instructor request pending{latestRequest?.instructorName && " · " + latestRequest.instructorName}</p>}
+    {latestRequest?.status === "REJECTED" && !pending && <p>{latestRequest.instructorName} declined your request.</p>}
+    {!guidance.loading && eligible === false && <p>Upgrade to Pro to request an instructor.</p>}
+    {eligible && !pending && (instructors.length ? <form onSubmit={request}>
+      <label className="form-label" htmlFor="guidance-instructor">Choose an instructor</label>
+      <select id="guidance-instructor" className="form-select" value={instructorId}
+        onChange={event => setInstructorId(event.target.value)} disabled={busy} required>
+        <option value="">Select instructor</option>
+        {instructors.filter(item => item.id !== instructor?.id).map(item =>
+          <option key={item.id} value={item.id}>{item.name}{item.expertise && " · " + item.expertise}</option>)}
+      </select>
+      <button type="submit" className="btn btn-primary mt-16" disabled={!instructorId || busy}>Request guidance</button>
+    </form> : <p>No instructors are currently available.</p>)}
+  </Card>;
+}
+
 export function Subscription({ user, notify, onUser }) {
   const plans = useResource("/commercial/plans"),
     sub = useResource("/commercial/subscriptions/user/" + user.id, {});
   return (
     <>
-      <Card title="Your Subscription" subtitle="Free and Pro learning access">
+      <Card title="Your Subscription" subtitle="Basic and Pro access">
         <Notice error={sub.error} />
         <GatewayStatus />
-        <span className="badge badge-blue">{sub.data.tier || "FREE"}</span>
-        <p>{sub.data.plan?.name || "Free learning plan"}</p>
+        <span className="badge badge-blue">{sub.data.tier === "PRO" ? "Pro" : "Basic"}</span>
+        <p>{sub.data.plan?.name || "Basic paper trading plan"}</p>
       </Card>
+      <InstructorGuidance notify={notify} />
       <div className="grid-3">
         {plans.data
           .filter((p) => p.audience === "B2C")

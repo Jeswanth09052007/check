@@ -68,11 +68,26 @@ const os = require("os");
     await p.locator("#verification-otp").fill("123456");
     await p.getByRole("button",{name:"Verify & continue",exact:true}).click();
     await p.waitForTimeout(500);
-    if (!(await p.getByText("Account created", { exact: true }).count()))
+    if (!(await p.getByText("Registration submitted", { exact: true }).count()))
       throw Error(
         "Registration failed: " + (await p.locator("body").innerText()),
       );
-    console.log("PASS React registration wizard creates account");
+    const apiBase = `http://127.0.0.1:${port}/api`;
+    const admin = await fetch(apiBase + "/auth/login/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "admin@indai.com", password: "Admin@1234" }),
+    });
+    const { data: session } = await admin.json();
+    const headers = { Authorization: "Bearer " + session.accessToken };
+    const pending = await fetch(apiBase + "/superuser/pending-approvals", { headers });
+    const { data: applicants } = await pending.json();
+    const applicant = applicants.find(u => u.email === "react-register@example.in");
+    const approved = await fetch(apiBase + "/superuser/approvals/" + applicant.id + "/approve", {
+      method: "POST", headers,
+    });
+    if (!approved.ok) throw Error("Approving registration failed");
+    console.log("PASS React registration waits for User Admin approval");
     await p.goto(`http://127.0.0.1:${port}/login.html`);
     await p.locator("#email").fill("react-register@example.in");
     await p.locator("#password").fill("Eval@12345");

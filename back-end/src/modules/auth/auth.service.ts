@@ -91,7 +91,9 @@ export class AuthService {
     if (!user || !verifyPassword(dto.password, user.password)) {
       throw new UnauthorizedException('Invalid email or password.');
     }
-    if (user.status === 'pending') throw new UnauthorizedException('Account is pending Super Admin approval.');
+    if (user.status === 'pending') throw new UnauthorizedException(user.role === 'learner'
+      ? 'Your application is awaiting approval. Trading opens after a User Admin approves it.'
+      : 'Account is pending Super Admin approval.');
     if (user.status !== 'active') throw new UnauthorizedException('Account is not active.');
 
     const requestedRole = normalizeRole(dto.role);
@@ -110,12 +112,19 @@ export class AuthService {
 
   private completeRegistration(dto: CreateUserDto) {
     const user = this.usersService.create(dto, true) as User;
-    // Instructor, Provider and Admin registrations are intentionally pending
-    // and must not receive authenticated tokens before approval.
-    if (user.status !== 'active') {
-      return { user, pendingApproval: true };
+    const reviewerRole = user.role === 'learner' ? 'User Admin' : 'Super Admin';
+    const now = new Date().toISOString();
+    for (const reviewer of this.db.users) {
+      if (reviewer.status !== 'active') continue;
+      if (reviewer.role !== 'superuser' && !(user.role === 'learner' &&
+        reviewer.role === 'admin' && reviewer.adminTeam === 'USER_ADMIN')) continue;
+      this.db.notifications.push({
+        id: this.db.id('n'), userId: reviewer.id, type: 'info', read: false, createdAt: now,
+        title: 'Account awaiting approval',
+        message: `${user.firstName} ${user.lastName} applied for a ${user.role} account.`,
+      });
     }
-    return this.createAuthenticatedSession(this.db.getUser(user.id)!);
+    return { user, pendingApproval: true, reviewerRole };
   }
 
   refresh(refreshToken: string) {

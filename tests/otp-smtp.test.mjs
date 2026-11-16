@@ -31,7 +31,7 @@ test('SMTP integration sends verification codes to the account email',async t=>{
   await t.test('Registration and password reset use the same exact-code engine',async()=>{
    const c=await req('/auth/register',{email:'smtp-new@example.in',password:'Test@1234',confirmPassword:'Test@1234',firstName:'Email',lastName:'Student',role:'learner',phone:'9876543210',dateOfBirth:'2007-05-09'});assert.equal(c.status,201);
    assert.ok(!JSON.stringify(await mail()).includes('Test@1234'));
-   const created=await req('/auth/verify-otp',{challengeId:c.data.challengeId,otp:await code()});assert.ok(created.data.accessToken);
+   const created=await req('/auth/verify-otp',{challengeId:c.data.challengeId,otp:await code()});assert.equal(created.data.pendingApproval,true);assert.equal(created.data.accessToken,undefined);
    const reset=await req('/auth/forgot-password',{email:'smtp-new@example.in'});assert.equal(reset.status,201);const actual=await code();
    const done=await req('/auth/reset-password',{challengeId:reset.data.challengeId,otp:actual,password:'Changed@1234',confirmPassword:'Changed@1234'});assert.equal(done.data.reset,true);
    assert.equal((await req('/auth/login',{email:'smtp-new@example.in',password:'Test@1234'})).status,401);

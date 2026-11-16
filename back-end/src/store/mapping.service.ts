@@ -24,6 +24,33 @@ export class MappingService {
     if (learner.instructorId === instructorId) throw new ConflictException('Student is already assigned to this instructor.');
     return this.create('ASSIGN', learner, instructor, actor);
   }
+  guidance(actor: User) {
+    const learner = this.person(actor.id, 'learner');
+    const eligible = this.db.hasPro(learner.id);
+    const requests = this.db.mappingRequests.filter(r => r.learnerId === learner.id && r.kind === 'ASSIGN');
+    const active = learner.instructorId ? this.db.getUser(learner.instructorId) : undefined;
+    return {
+      eligible,
+      instructor: active?.status === 'active' ? { id: active.id, name: this.name(active) } : null,
+      pending: requests.some(r => r.status === 'PENDING'),
+      latestRequest: requests[0] ? {
+        status: requests[0].status,
+        instructorName: this.db.getUser(requests[0].instructorId)
+          ? this.name(this.db.getUser(requests[0].instructorId)!)
+          : 'Previous instructor',
+      } : null,
+      instructors: eligible ? this.db.users
+        .filter(u => u.role === 'instructor' && u.status === 'active')
+        .map(u => ({ id: u.id, name: this.name(u), expertise: u.expertise || '' })) : [],
+    };
+  }
+  requestInstructor(instructorId: string, actor: User) {
+    const learner = this.person(actor.id, 'learner');
+    if (!this.db.hasPro(learner.id)) throw new ForbiddenException('An active Pro plan is required to request an instructor.');
+    const instructor = this.person(instructorId, 'instructor');
+    if (learner.instructorId === instructor.id) throw new ConflictException('This instructor is already assigned to you.');
+    return this.create('ASSIGN', learner, instructor, actor);
+  }
   requestRemoval(learnerId: string, actor: User) {
     if (actor.role !== 'instructor') throw new ForbiddenException('Instructor access required.');
     const learner = this.person(learnerId, 'learner');
@@ -47,6 +74,9 @@ export class MappingService {
     if (!['accept', 'reject'].includes(decision)) throw new BadRequestException('Choose accept or reject.');
     const learner = this.person(r.learnerId, 'learner'), instructor = this.person(r.instructorId, 'instructor');
     if ((learner.instructorId || null) !== r.previousInstructorId) throw new ConflictException('The mapping changed; this request is stale.');
+    if (decision === 'accept' && r.kind === 'ASSIGN' && r.requestedBy === learner.id && !this.db.hasPro(learner.id)) {
+      throw new ConflictException('The learner needs an active Pro plan to accept this request.');
+    }
     if (decision === 'accept') {
       if (learner.instructorId) {
         const old = this.db.getUser(learner.instructorId);
@@ -65,6 +95,9 @@ export class MappingService {
         this.notify(instructor.id, `Admin approved removal of ${this.name(learner)} from your class.`, r);
       }
     } else {
+      if (r.kind === 'ASSIGN' && r.requestedBy === learner.id) {
+        this.notify(learner.id, `${this.name(instructor)} declined your request. You can choose another instructor.`, r);
+      }
       this.notifyAdmins(`${this.name(learner)}: ${r.kind === 'ASSIGN' ? 'instructor declined the assignment' : 'removal request rejected'}.`, r);
       this.notify(instructor.id, `${this.name(learner)}: ${r.kind === 'ASSIGN' ? 'assignment declined' : 'admin rejected removal; student remains in your class'}.`, r);
     }

@@ -200,7 +200,7 @@ export default function Dashboard({ user, onUser }) {
   const slots = {
     "api-status": platform.error ? "Unavailable" : platform.loading ? "Connecting" : "Online",
     "subscription-nav":
-      user.subscriptionTier === "PRO" ? "Pro Plan" : "Free Plan · Upgrade",
+      user.subscriptionTier === "PRO" ? "Pro Plan" : "Basic Plan · Upgrade",
     "nav-name": user.firstName + " " + user.lastName,
     "nav-admin-name": user.firstName + " " + user.lastName,
     "nav-admin-team": user.adminTeam?.replaceAll("_", " ") || "Super Admin",
@@ -250,6 +250,12 @@ export default function Dashboard({ user, onUser }) {
             + Add User
           </button>
         </div>
+        {user.role === "admin" && !isPayment && (
+          <details className="mb-16">
+            <summary>Learner applications</summary>
+            <Approvals notify={notify} />
+          </details>
+        )}
         {user.role === "admin" && (
           <div className="mb-16">
             <button

@@ -56,6 +56,8 @@ Login uses **email and password only**. The authenticated role determines the de
 
 ## Working workflows
 
+Public registrations need approval after email verification. User Admin and Super Admin can review learners, and Super Admin reviews staff. Approved learners are shown the Basic plan. Verified Pro learners can request an instructor from Subscription and check whether the instructor accepted.
+
 - **Profiles:** the profile button on each portal opens editable personal information and a password change form. Password changes require signing in again.
 - **Courses:** Provider creates a draft, adds/edits/removes modules, uploads videos/PDFs, creates quizzes and assignments, submits for commercial review, and accepts a counter-offer when available. Payment Admin sanctions/publishes the course. Drafts do not appear as available learner courses.
 - **Learning:** Learner enrolls in a published course, opens uploaded lessons, completes individual modules and takes quizzes. Completion records and quiz attempts persist. Completion rewards are awarded once. Provider analytics use saved enrollments/completions rather than fixed placeholders.
