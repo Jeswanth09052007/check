@@ -1,18 +1,18 @@
 const {chromium}=require('playwright');
 const assert=require('node:assert/strict');
 const {spawn}=require('node:child_process');
+const {startSmtp}=require('./fixtures/smtp-sink.cjs');
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 (async()=>{
- const root=path.resolve(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'indai-formspree-ui-')),port=34862,base=`http://127.0.0.1:${port}`,errors=[];
- const server=spawn(process.execPath,['--require',path.join(root,'tests/fixtures/formspree-mock.cjs'),'dist/main.js'],{cwd:path.join(root,'back-end'),env:{...process.env,NODE_ENV:'test',OTP_DELIVERY_MODE:'formspree',FORMSPREE_TEST_DIR:dir,FORMSPREE_FORM_ID:'maeeoaow',DATA_DIR:dir,PORT:String(port),DEMO_MODE:'true',COOKIE_SECURE:'false',SMTP_HOST:'',UPSTOX_ANALYTICS_TOKEN:'',RATE_LIMIT_SENSITIVE_MAX:'5000',RATE_LIMIT_GENERAL_MAX:'20000'},stdio:'ignore'});
- const code=()=>JSON.parse(fs.readFileSync(path.join(dir,'mail.jsonl'),'utf8').trim().split('\n').at(-1)).payload.message.match(/OTP is: (\d{6})/)[1];
+ const root=path.resolve(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'indai-smtp-ui-')),port=34862,base=`http://127.0.0.1:${port}`,errors=[];
+ const smtp=await startSmtp();
+ const server=spawn(process.execPath,['dist/main.js'],{cwd:path.join(root,'back-end'),env:{...process.env,NODE_ENV:'test',...smtp.env,DATA_DIR:dir,PORT:String(port),DEMO_MODE:'true',COOKIE_SECURE:'false',UPSTOX_ANALYTICS_TOKEN:'',RATE_LIMIT_SENSITIVE_MAX:'5000',RATE_LIMIT_GENERAL_MAX:'20000'},stdio:'ignore'});
+ const code=()=>smtp.messages.at(-1).message.match(/OTP is: (\d{6})/)[1];
  let browser;
  try{
   for(let i=0;i<100;i++){try{if((await fetch(base)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
   browser=await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.CHROMIUM_EXECUTABLE?{executablePath:process.env.CHROMIUM_EXECUTABLE}:{})});
-  // Simulate an exhausted Formspree quota while every portal signs in with a password.
-  const failureFlag = path.join(dir, 'fail');
-  fs.writeFileSync(failureFlag, '');
+  smtp.setReject(true);
   let superToken;
   for (const [email, password, dashboard] of [
     ['learner@indai.com', 'Learn@1234', 'learner'],
@@ -56,16 +56,16 @@ const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
   assert.equal(denied.status, 401);
   assert.match((await denied.json()).message, /pending Super Admin approval/);
   assert.equal(denied.headers.has('set-cookie'), false);
-  assert.equal(fs.existsSync(path.join(dir, 'mail.jsonl')), false);
-  fs.unlinkSync(failureFlag);
-  console.log('PASS Password sign-in reaches all six dashboards with no Formspree requests and rejects invalid or pending credentials');
+  assert.equal(smtp.messages.length, 0);
+  smtp.setReject(false);
+  console.log('PASS Password sign-in reaches all six dashboards with no SMTP messages and rejects invalid or pending credentials');
   const p=await browser.newPage({viewport:{width:1440,height:1000}});p.on('pageerror',e=>errors.push(e.message));await p.goto(base+'/pages/login.html');assert.ok(p.url().endsWith('/login'));await p.getByText('Welcome Back to Your',{exact:false}).waitFor();assert.equal(await p.locator('.login-left').count(),1);
   await p.locator('#email').fill('learner@indai.com');await p.locator('#password').fill('Learn@1234');await p.locator('#login-btn').click();await p.locator('#verification-otp').waitFor();
-  await p.getByText('OTP sent to the email inbox connected to IndAI’s Formspree form. Enter that exact six-digit code.',{exact:true}).waitFor();assert.equal(await p.getByRole('button',{name:/Resend in/}).isDisabled(),true);
+  await p.getByText('Enter the six-digit code sent to your email address.',{exact:true}).waitFor();assert.equal(await p.getByRole('button',{name:/Resend in/}).isDisabled(),true);
   const actual=code();await p.locator('#verification-otp').fill(actual==='999999'?'111111':'999999');await p.getByRole('button',{name:'Verify & continue',exact:true}).click();await p.getByRole('dialog').getByText(/Incorrect OTP/).waitFor();assert.ok(p.url().endsWith('/login'));
   await p.locator('#verification-otp').fill(actual);await p.getByRole('button',{name:'Verify & continue',exact:true}).click();await p.waitForURL('**/learner-dashboard');
-  console.log('PASS Original IndAI login UI with owner-inbox email notice, wrong-code rejection and exact-code sign-in');
+  console.log('PASS Original IndAI login UI with registered-email notice, wrong-code rejection and exact-code sign-in');
   const reset=await browser.newPage();await reset.goto(base+'/login.html');await reset.getByText('Forgot password?',{exact:true}).click();await reset.locator('#reset-email').fill('learner@indai.com');await reset.getByRole('button',{name:'Enter OTP',exact:true}).click();await reset.locator('#verification-otp').waitFor();await reset.locator('#reset-password').fill('Changed@1234');await reset.locator('#reset-confirm').fill('Changed@1234');await reset.locator('#verification-otp').fill(code());await reset.getByRole('button',{name:'Reset password',exact:true}).click();await reset.getByText('Password reset. Sign in using your new password.',{exact:true}).waitFor();
   console.log('PASS Exact-code password reset in original IndAI modal styling');assert.deepEqual(errors,[]);
- }finally{if(browser)await browser.close();await new Promise(r=>{if(server.exitCode!==null)return r();server.once('exit',r);server.kill();});fs.rmSync(dir,{recursive:true,force:true});}
+ }finally{if(browser)await browser.close();await new Promise(r=>{if(server.exitCode!==null)return r();server.once('exit',r);server.kill();});await smtp.close();fs.rmSync(dir,{recursive:true,force:true});}
 })().catch(e=>{console.error(e);process.exitCode=1;});

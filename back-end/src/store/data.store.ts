@@ -50,8 +50,37 @@ export class DataStore implements OnModuleInit {
     RELIANCE:{name:'Reliance Industries',sector:'Energy',cap:'Large Cap'}, TCS:{name:'Tata Consultancy Services',sector:'IT',cap:'Large Cap'}, INFY:{name:'Infosys',sector:'IT',cap:'Large Cap'}, HDFCBANK:{name:'HDFC Bank',sector:'Banking',cap:'Large Cap'}, ICICIBANK:{name:'ICICI Bank',sector:'Banking',cap:'Large Cap'}, SBIN:{name:'State Bank of India',sector:'Banking',cap:'Large Cap'}, AXISBANK:{name:'Axis Bank',sector:'Banking',cap:'Mid Cap'}, KOTAKBANK:{name:'Kotak Mahindra Bank',sector:'Banking',cap:'Large Cap'}, ITC:{name:'ITC Limited',sector:'FMCG',cap:'Large Cap'}, HINDUNILVR:{name:'Hindustan Unilever',sector:'FMCG',cap:'Large Cap'}, NESTLEIND:{name:'Nestle India',sector:'FMCG',cap:'Large Cap'}, DABUR:{name:'Dabur India',sector:'FMCG',cap:'Large Cap'}, BHARTIARTL:{name:'Bharti Airtel',sector:'Telecom',cap:'Large Cap'}, SUNPHARMA:{name:'Sun Pharmaceutical',sector:'Pharma',cap:'Large Cap'}, DRREDDY:{name:"Dr. Reddy's Laboratories",sector:'Pharma',cap:'Large Cap'}, CIPLA:{name:'Cipla Limited',sector:'Pharma',cap:'Large Cap'}, MARUTI:{name:'Maruti Suzuki',sector:'Automobile',cap:'Large Cap'}, 'BAJAJ-AUTO':{name:'Bajaj Auto',sector:'Automobile',cap:'Large Cap'}, 'M&M':{name:'Mahindra & Mahindra',sector:'Automobile',cap:'Large Cap'}, LT:{name:'Larsen & Toubro',sector:'Infrastructure',cap:'Large Cap'}, ULTRACEMCO:{name:'UltraTech Cement',sector:'Infrastructure',cap:'Large Cap'}, ADANIENT:{name:'Adani Enterprises',sector:'Infrastructure',cap:'Large Cap'}, ADANIPORTS:{name:'Adani Ports',sector:'Infrastructure',cap:'Mid Cap'}, WIPRO:{name:'Wipro Limited',sector:'IT',cap:'Mid Cap'}, HCLTECH:{name:'HCL Technologies',sector:'IT',cap:'Large Cap'}, TECHM:{name:'Tech Mahindra',sector:'IT',cap:'Large Cap'}, MPHASIS:{name:'Mphasis Limited',sector:'IT',cap:'Mid Cap'}, PERSISTENT:{name:'Persistent Systems',sector:'IT',cap:'Mid Cap'}, TATAMOTORS:{name:'Tata Motors',sector:'Automobile',cap:'Mid Cap'}, HEROMOTOCO:{name:'Hero MotoCorp',sector:'Automobile',cap:'Mid Cap'}, EICHERMOT:{name:'Eicher Motors',sector:'Automobile',cap:'Mid Cap'}, LUPIN:{name:'Lupin Limited',sector:'Pharma',cap:'Mid Cap'}, DIVISLAB:{name:"Divi's Laboratories",sector:'Pharma',cap:'Mid Cap'}, ALKEM:{name:'Alkem Laboratories',sector:'Pharma',cap:'Mid Cap'}, TITAN:{name:'Titan Company',sector:'Consumer',cap:'Mid Cap'}, GODREJCP:{name:'Godrej Consumer Products',sector:'Consumer',cap:'Mid Cap'}, MARICO:{name:'Marico Limited',sector:'FMCG',cap:'Mid Cap'}, POWERGRID:{name:'Power Grid Corp',sector:'Power',cap:'Mid Cap'}, NTPC:{name:'NTPC Limited',sector:'Power',cap:'Mid Cap'}, TATAPOWER:{name:'Tata Power Company',sector:'Power',cap:'Mid Cap'}, BAJFINANCE:{name:'Bajaj Finance',sector:'NBFC',cap:'Mid Cap'}, BAJAJFINSV:{name:'Bajaj Finserv',sector:'NBFC',cap:'Mid Cap'}, MUTHOOTFIN:{name:'Muthoot Finance',sector:'NBFC',cap:'Mid Cap'}, NAUKRI:{name:'Info Edge (Naukri)',sector:'Technology',cap:'Small Cap'}, INDIAMART:{name:'IndiaMART InterMESH',sector:'Technology',cap:'Small Cap'}, PAYTM:{name:'Paytm (One97 Comm.)',sector:'Fintech',cap:'Small Cap'}, POLICYBZR:{name:'PB Fintech',sector:'Fintech',cap:'Small Cap'}, NYKAA:{name:'Nykaa',sector:'E-commerce',cap:'Small Cap'}, SHOPERSTOP:{name:'Shoppers Stop',sector:'E-commerce',cap:'Small Cap'}, AUROPHARMA:{name:'Aurobindo Pharma',sector:'Pharma',cap:'Small Cap'}, GLENMARK:{name:'Glenmark Pharmaceuticals',sector:'Pharma',cap:'Small Cap'}, ZEEL:{name:'Zee Entertainment',sector:'Media',cap:'Small Cap'}, IRCTC:{name:'IRCTC',sector:'Travel',cap:'Small Cap'}, ONGC:{name:'Oil & Natural Gas Corp',sector:'Energy',cap:'Large Cap'}, BPCL:{name:'Bharat Petroleum Corp',sector:'Energy',cap:'Large Cap'}, IOC:{name:'Indian Oil Corporation',sector:'Energy',cap:'Large Cap'}, IDFCFIRSTB:{name:'IDFC First Bank',sector:'Banking',cap:'Mid Cap'}, BALKRISIND:{name:'Balkrishna Industries',sector:'Automobile',cap:'Mid Cap'}, BANDHANBNK:{name:'Bandhan Bank',sector:'Banking',cap:'Mid Cap'}, TVSMOTOR:{name:'TVS Motor',sector:'Automobile',cap:'Mid Cap'}
   };
 
-  onModuleInit() { this.seed(); if(!fs.existsSync(this.stateFile)&&process.env.DEMO_MODE==='false')this.productionSeed(); this.restore(); this.loadCsvStocks(); this.save(); this.logger.log(`Loaded ${this.stocks.length} stocks, ${Object.keys(this.candles).length} minute datasets, ${this.users.length} users.`); }
+  onModuleInit() { this.seed(); if(!fs.existsSync(this.stateFile)&&process.env.DEMO_MODE==='false')this.productionSeed(); this.restore(); if (!fs.existsSync(this.stateFile) && process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test' && process.env.DEMO_MODE === 'true') this.seedDemoAccounts(); this.loadCsvStocks(); this.save(); this.logger.log(`Loaded ${this.stocks.length} stocks, ${Object.keys(this.candles).length} minute datasets, ${this.users.length} users.`); }
   id(prefix:string){ return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,7)}`; }
+  private seedDemoAccounts() {
+    const firstNames = ['Aarav', 'Aditi', 'Ananya', 'Arjun', 'Diya', 'Ishaan', 'Kavya', 'Meera', 'Neel', 'Riya', 'Vihaan', 'Zoya'];
+    const lastNames = ['Das', 'Gupta', 'Iyer', 'Joshi', 'Kumar', 'Menon', 'Nair', 'Patel', 'Rao', 'Reddy', 'Shah'];
+    const subjects = ['Market basics', 'Risk management', 'Portfolio construction', 'Technical analysis'];
+    const password = hashPassword('IndaiDemo@2026');
+    const add = (role: 'learner' | 'instructor' | 'admin', count: number) => {
+      for (let i = 0; i < count; i++) {
+        const number = i + 1;
+        const balance = role === 'admin' ? 0 : 100000;
+        this.users.push({
+          id: `demo_${role}_${number}`,
+          firstName: firstNames[i % firstNames.length],
+          lastName: lastNames[Math.floor(i / firstNames.length) % lastNames.length],
+          email: `${role}${number}@indai.test`,
+          password, role, status: role === 'learner' && i % 12 === 0 ? 'pending' : 'active',
+          skillPoints: 0, startingBalance: balance, virtualBalance: balance, portfolioValue: balance,
+          tradingLimit: balance ? 150000 : 0,
+          ...(role === 'learner' ? { subscriptionTier: 'FREE' as const, learnerLevel: 'BEGINNER' } : {}),
+          ...(role === 'instructor' ? { studentIds: [], expertise: subjects[i % subjects.length] } : {}),
+          ...(role === 'admin' ? { adminTeam: i % 2 ? 'PAYMENT_ADMIN' as const : 'USER_ADMIN' as const } : {}),
+          createdAt: new Date().toISOString(),
+        });
+      }
+    };
+    add('admin', 4);
+    add('instructor', 30);
+    add('learner', 240);
+  }
+
   private seed(){
     this.paymentIntents = [];
     this.refreshSessions = [];

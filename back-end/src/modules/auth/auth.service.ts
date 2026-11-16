@@ -7,6 +7,7 @@ import { hashPassword, verifyPassword } from '../../common/password.util';
 import { UsersService } from '../users/users.service';
 import { CreateUserDto } from '../users/dto';
 import { LoginDto } from './dto';
+import { deliverOtp, otpDelivery } from './otp-mail';
 import { JwtTokenService } from './jwt-token.service';
 
 @Injectable()
@@ -20,27 +21,19 @@ export class AuthService {
   private challenges = new Map<string, any>();
   // The permissive path is exclusively for the pre-existing isolated test suite.
   private readonly demoOtp = process.env.NODE_ENV === 'test' && process.env.OTP_DELIVERY_MODE === 'demo';
-  private readonly otpEngine = createOtpEngine({send: async payload => {
-    const formId = process.env.FORMSPREE_FORM_ID || 'maeeoaow';
-    if(!/^[a-zA-Z0-9]+$/.test(formId)) throw new Error('Invalid Formspree form ID.');
-    const response = await fetch(`https://formspree.io/f/${formId}`, {
-      method:'POST', headers:{'Content-Type':'application/json',Accept:'application/json'},
-      body:JSON.stringify(payload), signal:AbortSignal.timeout(15000),
-    });
-    const result = await response.json().catch(()=>({}));
-    if(!response.ok || result.errors) throw new Error('Formspree did not accept the OTP email. Check form activation, quota and CAPTCHA settings.');
-  }});
+  private readonly otpEngine = createOtpEngine({ send: deliverOtp });
+
   private async challenge(purpose: string, data: any, email: string) {
     for(const [id,c] of this.challenges) if(c.expiresAt <= Date.now()) this.challenges.delete(id);
     const client = purpose + ':' + email.toLowerCase().trim();
     let sent: {challengeId:string;expiresIn:number};
     try {
-      sent = this.demoOtp ? {challengeId:randomBytes(32).toString('hex'),expiresIn:300} : await this.otpEngine.request(email,client);
-    } catch(e) { throw new BadRequestException(e.message || 'OTP email could not be sent. Please try again.'); }
+      sent = this.demoOtp ? {challengeId:randomBytes(32).toString('hex'),expiresIn:300} : await this.otpEngine.request(email, client, purpose !== 'reset' || Boolean(data.userId));
+    } catch(e) { throw new BadRequestException(e.message || 'Verification email could not be sent. Try again.'); }
     // Only a successful send replaces an earlier challenge.
     for(const [id,c] of this.challenges) if(c.client===client) this.challenges.delete(id);
     this.challenges.set(sent.challengeId,{purpose,data,email,client,expiresAt:Date.now()+sent.expiresIn*1000});
-    return {otpRequired:true,...sent,demoOtp:this.demoOtp,delivery:this.demoOtp?'test':'formspree-owner',resendAfter:30};
+    return {otpRequired:true,...sent,demoOtp:this.demoOtp,delivery:this.demoOtp ? 'test' : otpDelivery(email),resendAfter:30};
   }
   async resendOtp(challengeId: string) {
     const c=this.challenges.get(challengeId);
@@ -81,7 +74,7 @@ export class AuthService {
     user.password=hashPassword(dto.password);
     for(const [id,c] of this.challenges)if(c.data?.userId===user.id)this.challenges.delete(id);
     for(const s of this.db.refreshSessions) if(s.userId===user.id && !s.revokedAt){s.revokedAt=new Date().toISOString();s.revokedReason='PASSWORD_RESET';}
-    this.db.audit('PASSWORD_RESET',user.id,{otpDelivery:this.demoOtp?'test':'formspree-owner'});
+    this.db.audit('PASSWORD_RESET',user.id,{otpDelivery:this.demoOtp ? 'test' : otpDelivery(user.email)});
     return {reset:true};
   }
   login(dto: LoginDto) {

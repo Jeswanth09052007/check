@@ -1,4 +1,3 @@
-> **27 October 2026 update:** the supplied Formspree OTP engine is integrated into the existing IndAI UI. Codes go to the owner inbox for form `maeeoaow`; the exact six-digit code is required. Forgot password, instructor-approved mapping, admin-approved removal, and red unmapped-student alerts remain included. Start with [UPDATE_GUIDE.md](UPDATE_GUIDE.md) for setup and existing-data instructions.
 
 # IndAI — React Platform (workflow repair, v3.2)
 
@@ -76,6 +75,8 @@ Provider → Videos / Materials → select a course → choose or drop a file �
 The uploaded module appears immediately. Learners access it after course publication and enrollment, with the required Pro/institution access. Local media paths need a temporary signed URL; bare upload paths are rejected. Reopen the course if a media link expires. The ZIP includes a small generated WebM test fixture used to verify actual playback. File uploads and account state must be stored on a persistent disk when deployed.
 
 ## Configure external services privately
+
+IndAI sends OTPs to the user through the same SMTP settings used for institution email. In local demo mode, seeded accounts and reserved `.test` addresses receive OTPs in `back-end/persistent-data/demo-otp-inbox.jsonl` (or the configured `DATA_DIR`). The inbox is a local file and is disabled in production. A fresh local demo store includes 30 mock instructors, 4 mock admins and 240 mock learners. Their email addresses use `instructor1@indai.test`, `admin1@indai.test` and `learner1@indai.test` numbering and their shared demo password is `IndaiDemo@2026`. Choose an active account such as `learner2@indai.test` to sign in. The SMTP sender address must be accepted by your mail server.
 
 Edit **back-end/.env** after setup (or use host environment variables):
 

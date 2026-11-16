@@ -10,7 +10,7 @@ For Course Provider: `provider@indai.com` / `Prov@1234`.
 For Learner: `learner@indai.com` / `Learn@1234`.
 Other demo roles and all workflows are documented in README.md.
 
-On the sign-in page, choose **Sign In with Password** to sign in directly with an active account. **Continue to OTP** still sends a code through Formspree. Account registration and password reset continue to use OTP.
+On the sign-in page, choose **Sign In with Password** to sign in directly with an active account. **Continue to OTP** still sends a code to the registered email address through SMTP (or the local demo inbox for seeded users). Account registration and password reset continue to use OTP.
 
 Setup keeps an existing `back-end/.env`. If it is absent, setup creates one from the example. Account deletion sends the reason to the account email before removing the account. To enable delivery, configure SMTP in `back-end/.env` and restart the backend.
 

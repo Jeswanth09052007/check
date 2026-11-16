@@ -25,3 +25,21 @@
 .watchlist-controls { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 8px; }
 .watchlist-controls > div { min-width: 0; }
 .watchlist-controls select { width: auto; max-width: 100%; }
+
+.stock-workspace-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.stock-workspace-header span, .stock-quote-state {
+  color: var(--gray-500);
+  font-size: .875rem;
+}
+.stock-quote-state { margin: 0 0 12px; }
+.stock-chart { display: block; }
+.stock-results .stock-result:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}

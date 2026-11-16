@@ -7,9 +7,9 @@ function fixture() {
   const engine = createOtpEngine({ send: async value => { payload = value; }, now: () => clock });
   return { engine, advance: ms => { clock += ms; }, payload: () => payload, code: () => payload.message.match(/OTP is: (\d{6})/)[1] };
 }
-test('owner notification includes OTP, omits password and recipient routing fields; correct code is single use', async () => {
+test('verification email goes to the account address and the code is single use', async () => {
   const f = fixture(); const c = await f.engine.request('demo@example.com', 'a');
-  assert.match(f.code(), /^\d{6}$/); assert.equal(f.payload().email, undefined); assert.equal(f.payload().password, undefined);
+  assert.match(f.code(), /^\d{6}$/); assert.equal(f.payload().to, 'demo@example.com'); assert.equal(f.payload().password, undefined);
   assert.throws(() => f.engine.verify(c.challengeId, '12345', 'a'));
   assert.throws(() => f.engine.verify(c.challengeId, f.code(), 'b'));
   assert.deepEqual(f.engine.verify(c.challengeId, f.code(), 'a'), { email: 'demo@example.com' });

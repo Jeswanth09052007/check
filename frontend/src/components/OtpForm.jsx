@@ -4,7 +4,7 @@ export default function OtpForm({onSubmit,onResend,challenge,busy=false,label='V
   useEffect(()=>{setOtp('');setError('');setWait(challenge?.resendAfter??30);},[challenge?.challengeId]);
   useEffect(()=>{if(wait<=0)return;const t=setTimeout(()=>setWait(v=>v-1),1000);return()=>clearTimeout(t);},[wait]);
   return <form onSubmit={async e=>{e.preventDefault();if(!/^[0-9]{6}$/.test(otp)){setError('Enter exactly six digits.');return;}setError('');try{await onSubmit(otp);}catch(e){setError(e.message);}}}>
-    <p>{challenge?.demoOtp?'Test verification: enter any six-digit number.':'OTP sent to the email inbox connected to IndAI’s Formspree form. Enter that exact six-digit code.'}</p>
+    <p>{challenge?.demoOtp?'Test verification: enter any six-digit number.':challenge?.delivery === 'local' ? 'Enter the six-digit code from the local demo inbox.' : 'Enter the six-digit code sent to your email address.'}</p>
     <label className="form-label" htmlFor="verification-otp">Enter OTP</label>
     <input autoFocus id="verification-otp" className="form-input" type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" required value={otp} onChange={e=>{if(/^[0-9]{0,6}$/.test(e.target.value))setOtp(e.target.value);}} />
     <p className="card-subtitle">Valid for five minutes. Up to five attempts.</p>
