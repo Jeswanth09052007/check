@@ -127,7 +127,7 @@ export class UsersService {
       email: normalizedEmail,
       password: hashPassword(dto.password),
       role,
-      status: String(publicRegistration && ['instructor','provider','admin'].includes(role) ? 'pending' : (dto.status || (role === 'provider' ? 'pending' : 'active'))).toLowerCase(),
+      status: String(publicRegistration ? 'pending' : (dto.status || (role === 'provider' ? 'pending' : 'active'))).toLowerCase(),
       skillPoints: Number(dto.skillPoints || 0),
       startingBalance,
       virtualBalance: dto.virtualBalance ?? startingBalance,

@@ -1,4 +1,3 @@
-> **27 October 2026 update:** the supplied Formspree OTP engine is integrated into the existing IndAI UI. Codes go to the owner inbox for form `maeeoaow`; the exact six-digit code is required. Forgot password, instructor-approved mapping, admin-approved removal, and red unmapped-student alerts remain included. Start with [UPDATE_GUIDE.md](UPDATE_GUIDE.md) for setup and existing-data instructions.
 
 # IndAI — React Platform (workflow repair, v3.2)
 
@@ -57,6 +56,8 @@ Login uses **email and password only**. The authenticated role determines the de
 
 ## Working workflows
 
+Public registrations need approval after email verification. User Admin and Super Admin can review learners, and Super Admin reviews staff. Approved learners start on Basic, which includes paper trading, watchlists and portfolio. Pro, Plus or an active institution license unlocks learning. Verified Pro learners can request an instructor from Subscription and check whether the instructor accepted. Plus includes Pro and lets User Admin or Super Admin assign an active instructor as a course coordinator. Set the approved monthly price in `PLUS_MONTHLY_PRICE_INR` to enable Plus checkout. A Plus upgrade preserves time remaining on the current paid plan.
+
 - **Profiles:** the profile button on each portal opens editable personal information and a password change form. Password changes require signing in again.
 - **Courses:** Provider creates a draft, adds/edits/removes modules, uploads videos/PDFs, creates quizzes and assignments, submits for commercial review, and accepts a counter-offer when available. Payment Admin sanctions/publishes the course. Drafts do not appear as available learner courses.
 - **Learning:** Learner enrolls in a published course, opens uploaded lessons, completes individual modules and takes quizzes. Completion records and quiz attempts persist. Completion rewards are awarded once. Provider analytics use saved enrollments/completions rather than fixed placeholders.
@@ -76,6 +77,8 @@ Provider → Videos / Materials → select a course → choose or drop a file �
 The uploaded module appears immediately. Learners access it after course publication and enrollment, with the required Pro/institution access. Local media paths need a temporary signed URL; bare upload paths are rejected. Reopen the course if a media link expires. The ZIP includes a small generated WebM test fixture used to verify actual playback. File uploads and account state must be stored on a persistent disk when deployed.
 
 ## Configure external services privately
+
+IndAI sends OTPs to the user through the same SMTP settings used for institution email. In local demo mode, seeded accounts and reserved `.test` addresses receive OTPs in `back-end/persistent-data/demo-otp-inbox.jsonl` (or the configured `DATA_DIR`). The inbox is a local file and is disabled in production. A fresh local demo store includes 30 mock instructors, 4 mock admins and 240 mock learners. Their email addresses use `instructor1@indai.test`, `admin1@indai.test` and `learner1@indai.test` numbering and their shared demo password is `IndaiDemo@2026`. Choose an active account such as `learner2@indai.test` to sign in. The SMTP sender address must be accepted by your mail server.
 
 Edit **back-end/.env** after setup (or use host environment variables):
 

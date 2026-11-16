@@ -29,6 +29,7 @@ export class CommercialService {
     if(!actor) throw new ForbiddenException('Authenticated user required.');
     if(actor.role==='learner' && actor.id!==userId) throw new ForbiddenException('Learners can view only their own subscription.');
     const user=this.db.getUser(userId); if(!user) throw new NotFoundException('User not found.');
+    if (user.role === 'learner') this.db.hasPro(user.id);
     const active=this.db.subscriptions.find((s:any)=>s.customerType==='USER'&&s.customerId===userId&&s.status==='ACTIVE');
     const plan=active?this.db.subscriptionPlans.find((p:any)=>p.id===active.planId):null;
     return {tier:user.subscriptionTier||'FREE',subscription:active||null,plan:plan||null};

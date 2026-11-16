@@ -7,6 +7,7 @@ import { hashPassword, verifyPassword } from '../../common/password.util';
 import { UsersService } from '../users/users.service';
 import { CreateUserDto } from '../users/dto';
 import { LoginDto } from './dto';
+import { deliverOtp, otpDelivery } from './otp-mail';
 import { JwtTokenService } from './jwt-token.service';
 
 @Injectable()
@@ -20,27 +21,19 @@ export class AuthService {
   private challenges = new Map<string, any>();
   // The permissive path is exclusively for the pre-existing isolated test suite.
   private readonly demoOtp = process.env.NODE_ENV === 'test' && process.env.OTP_DELIVERY_MODE === 'demo';
-  private readonly otpEngine = createOtpEngine({send: async payload => {
-    const formId = process.env.FORMSPREE_FORM_ID || 'maeeoaow';
-    if(!/^[a-zA-Z0-9]+$/.test(formId)) throw new Error('Invalid Formspree form ID.');
-    const response = await fetch(`https://formspree.io/f/${formId}`, {
-      method:'POST', headers:{'Content-Type':'application/json',Accept:'application/json'},
-      body:JSON.stringify(payload), signal:AbortSignal.timeout(15000),
-    });
-    const result = await response.json().catch(()=>({}));
-    if(!response.ok || result.errors) throw new Error('Formspree did not accept the OTP email. Check form activation, quota and CAPTCHA settings.');
-  }});
+  private readonly otpEngine = createOtpEngine({ send: deliverOtp });
+
   private async challenge(purpose: string, data: any, email: string) {
     for(const [id,c] of this.challenges) if(c.expiresAt <= Date.now()) this.challenges.delete(id);
     const client = purpose + ':' + email.toLowerCase().trim();
     let sent: {challengeId:string;expiresIn:number};
     try {
-      sent = this.demoOtp ? {challengeId:randomBytes(32).toString('hex'),expiresIn:300} : await this.otpEngine.request(email,client);
-    } catch(e) { throw new BadRequestException(e.message || 'OTP email could not be sent. Please try again.'); }
+      sent = this.demoOtp ? {challengeId:randomBytes(32).toString('hex'),expiresIn:300} : await this.otpEngine.request(email, client, purpose !== 'reset' || Boolean(data.userId));
+    } catch(e) { throw new BadRequestException(e.message || 'Verification email could not be sent. Try again.'); }
     // Only a successful send replaces an earlier challenge.
     for(const [id,c] of this.challenges) if(c.client===client) this.challenges.delete(id);
     this.challenges.set(sent.challengeId,{purpose,data,email,client,expiresAt:Date.now()+sent.expiresIn*1000});
-    return {otpRequired:true,...sent,demoOtp:this.demoOtp,delivery:this.demoOtp?'test':'formspree-owner',resendAfter:30};
+    return {otpRequired:true,...sent,demoOtp:this.demoOtp,delivery:this.demoOtp ? 'test' : otpDelivery(email),resendAfter:30};
   }
   async resendOtp(challengeId: string) {
     const c=this.challenges.get(challengeId);
@@ -81,7 +74,7 @@ export class AuthService {
     user.password=hashPassword(dto.password);
     for(const [id,c] of this.challenges)if(c.data?.userId===user.id)this.challenges.delete(id);
     for(const s of this.db.refreshSessions) if(s.userId===user.id && !s.revokedAt){s.revokedAt=new Date().toISOString();s.revokedReason='PASSWORD_RESET';}
-    this.db.audit('PASSWORD_RESET',user.id,{otpDelivery:this.demoOtp?'test':'formspree-owner'});
+    this.db.audit('PASSWORD_RESET',user.id,{otpDelivery:this.demoOtp ? 'test' : otpDelivery(user.email)});
     return {reset:true};
   }
   login(dto: LoginDto) {
@@ -98,7 +91,9 @@ export class AuthService {
     if (!user || !verifyPassword(dto.password, user.password)) {
       throw new UnauthorizedException('Invalid email or password.');
     }
-    if (user.status === 'pending') throw new UnauthorizedException('Account is pending Super Admin approval.');
+    if (user.status === 'pending') throw new UnauthorizedException(user.role === 'learner'
+      ? 'Your application is awaiting approval. Trading opens after a User Admin approves it.'
+      : 'Account is pending Super Admin approval.');
     if (user.status !== 'active') throw new UnauthorizedException('Account is not active.');
 
     const requestedRole = normalizeRole(dto.role);
@@ -117,12 +112,19 @@ export class AuthService {
 
   private completeRegistration(dto: CreateUserDto) {
     const user = this.usersService.create(dto, true) as User;
-    // Instructor, Provider and Admin registrations are intentionally pending
-    // and must not receive authenticated tokens before approval.
-    if (user.status !== 'active') {
-      return { user, pendingApproval: true };
+    const reviewerRole = user.role === 'learner' ? 'User Admin' : 'Super Admin';
+    const now = new Date().toISOString();
+    for (const reviewer of this.db.users) {
+      if (reviewer.status !== 'active') continue;
+      if (reviewer.role !== 'superuser' && !(user.role === 'learner' &&
+        reviewer.role === 'admin' && reviewer.adminTeam === 'USER_ADMIN')) continue;
+      this.db.notifications.push({
+        id: this.db.id('n'), userId: reviewer.id, type: 'info', read: false, createdAt: now,
+        title: 'Account awaiting approval',
+        message: `${user.firstName} ${user.lastName} applied for a ${user.role} account.`,
+      });
     }
-    return this.createAuthenticatedSession(this.db.getUser(user.id)!);
+    return { user, pendingApproval: true, reviewerRole };
   }
 
   refresh(refreshToken: string) {
@@ -173,16 +175,22 @@ export class AuthService {
     return { loggedOut: true, revokedRefreshSessions: revoked };
   }
 
+  private accountProfile(user: User) {
+    if (user.role !== 'learner') return this.db.safeUser(user);
+    const learningAccess = this.db.hasLearningAccess(user.id);
+    return { ...this.db.safeUser(user), learningAccess };
+  }
+
   me(userId: string) {
     const user = this.db.getUser(userId);
     if (!user) throw new BadRequestException('User not found.');
-    return this.db.safeUser(user);
+    return this.accountProfile(user);
   }
 
   meAs(requesterId: string, targetId?: string) {
     const requester = this.db.getUser(requesterId);
     if (!requester || requester.status !== 'active') throw new UnauthorizedException('Authenticated user is not active.');
-    if (!targetId || targetId === requesterId) return this.db.safeUser(requester);
+    if (!targetId || targetId === requesterId) return this.accountProfile(requester);
     if (!['superuser', 'admin', 'instructor'].includes(requester.role)) {
       throw new ForbiddenException('You can only view your own authenticated profile.');
     }
@@ -208,7 +216,7 @@ export class AuthService {
       accessExpiresAt: new Date(pair.accessPayload.exp * 1000).toISOString(),
     });
     return {
-      user: this.db.safeUser(user),
+      user: this.accountProfile(user),
       session: {
         userId: user.id,
         role: user.role,

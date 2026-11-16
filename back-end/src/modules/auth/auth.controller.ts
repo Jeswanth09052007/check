@@ -15,7 +15,7 @@ export class AuthController {
 
   @Public()
   @Post('login')
-  @ApiOperation({ summary: 'Validate credentials and email a six-digit OTP to the configured Formspree owner inbox. Verify OTP to receive tokens.' })
+  @ApiOperation({ summary: 'Validate credentials and email a six-digit OTP to the registered address. Verify OTP to receive tokens.' })
   @ApiBody({ type: LoginDto })
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
     return { success: true, data: this.attachRefreshCookie(await this.service.login(dto), res) };

@@ -3,7 +3,6 @@ import OtpForm from "../components/OtpForm";
 import LoginLayout from "../layouts/Login";
 import RegisterLayout from "../layouts/Register";
 import { api, setToken } from "../services/api";
-import { checkout } from "../services/payments";
 import { useResource } from "../hooks/useResource";
 import { Modal } from "../components/Common";
 const passwordRule = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*]).{8,}$/;
@@ -195,14 +194,11 @@ export function RegisterPage() {
       "reg-content-type": "Mixed",
       "reg-texp": "beginner",
       "reg-risk": "moderate",
-      tier: "FREE",
-      "reg-pro-plan": "pro_monthly",
     }),
     [step, setStep] = useState(1),
     [securityChecked, setSecurityChecked] = useState(false),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
-    [tier, setTier] = useState("FREE"),
     [created, setCreated] = useState(null),
     [show, setShow] = useState(false),
     [info, setInfo] = useState(""),
@@ -279,7 +275,6 @@ export function RegisterPage() {
       const result=await api('/auth/verify-otp','POST',{challengeId:challenge.challengeId,otp});
       if(result.accessToken)setToken(result.accessToken);
       setCreated(result);setChallenge(null);setStep(6);
-      if(tier==='PRO'&&result.accessToken)await checkout({user:result.user,planId:form['reg-pro-plan']});
     } catch(e){throw e;}
     finally {setBusy(false);}
   }
@@ -294,10 +289,6 @@ export function RegisterPage() {
   const slots = {
     "err-reg-pw": securityChecked ? security.password : "",
     "err-reg-pw2": securityChecked || form["reg-pw2"] ? security.confirmation : "",
-    "registration-plan-preview":
-      tier === "PRO"
-        ? "Secure Razorpay checkout follows registration."
-        : "Free plan: no payment required.",
     eye1: show ? "Hide" : "Show",
     eye2: show ? "Hide" : "Show",
     "step-label": `Step ${Math.min(step, 5)} of 5`,
@@ -306,7 +297,7 @@ export function RegisterPage() {
       ? "Registration submitted"
       : "Account created",
     "step6-sub": created?.pendingApproval
-      ? "Your account needs Super Admin approval."
+      ? `A ${created.reviewerRole || "Super Admin"} will review your application before you can sign in.`
       : "You can sign in and start learning.",
     "step6-details": <p>{created?.user?.email}</p>,
     "step6-btn": (
@@ -336,11 +327,6 @@ export function RegisterPage() {
           else if (code === "submitRegistration()") submit();
           else if (code.startsWith("selectRole"))
             setForm({ ...form, role: code.match(/'([^']+)'/)[1] });
-          else if (code.startsWith("selectLearnerTier")) {
-            const t = code.includes("PRO") ? "PRO" : "FREE";
-            setTier(t);
-            setForm({ ...form, tier: t });
-          }
           else if (code.includes("toggleRegPw")) setShow(!show);
           else if (code.includes("showTerms"))
             setInfo(

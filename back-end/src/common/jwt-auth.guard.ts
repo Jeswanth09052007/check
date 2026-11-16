@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { DataStore } from '../store/data.store';
 import { JwtTokenService } from '../modules/auth/jwt-token.service';
@@ -29,6 +29,14 @@ export class JwtAuthGuard implements CanActivate {
     if (user.role !== payload.role) throw new UnauthorizedException('Your account role changed. Please sign in again.');
     if (user.role === 'admin' && (user.adminTeam || '') !== (payload.adminTeam || '')) {
       throw new UnauthorizedException('Your admin division changed. Please sign in again.');
+    }
+
+    if (user.role === 'learner') {
+      const route = String(req.originalUrl).split('?')[0];
+      const requiresLearning = /^\/api\/(courses|course-modules|enrollments|quizzes|assignments|sessions|diagnostic|feedback)(\/|$)/.test(route);
+      if (requiresLearning && !this.db.hasLearningAccess(user.id)) {
+        throw new ForbiddenException('Learning requires Pro, Plus, or an active institution license.');
+      }
     }
 
     // JWT is the source of identity. Legacy headers are overwritten so old

@@ -1,5 +1,5 @@
 import { RejectionRemarkDto } from '../../common/form-validation';
-import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, NotFoundException, Param, Post, Query, Req } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { DataStore } from '../../store/data.store';
 import { Roles } from '../../common/roles.decorator';
@@ -51,24 +51,30 @@ export class SuperuserController {
     return { success: true, data: { events: filtered.slice(offset, offset + 50).map(named), total: filtered.length } };
   }
 
+  private canReview(actor: { role: string; adminTeam?: string }, role: string) {
+    return actor.role === 'superuser' || (role === 'learner' &&
+      actor.role === 'admin' && actor.adminTeam === 'USER_ADMIN');
+  }
+
   @Get('pending-approvals')
-  @Roles('superuser')
-  @ApiOperation({ summary: 'List pending Instructor, Course Provider, User Admin and Payment Admin account requests' })
-  pendingApprovals() {
+  @Roles('superuser', 'admin')
+  @ApiOperation({ summary: 'List pending account requests visible to the reviewer' })
+  pendingApprovals(@Req() req: any) {
+    if (!this.canReview(req.user, 'learner')) throw new ForbiddenException('User Admin or Super Admin required.');
     const pending = this.db.users
-      .filter(u => u.status === 'pending' && ['instructor', 'provider', 'admin'].includes(u.role))
+      .filter(u => u.status === 'pending' && u.role !== 'superuser' && this.canReview(req.user, u.role))
       .map(u => this.db.safeUser(u));
     return { success: true, data: pending };
   }
 
   @Post('approvals/:userId/approve')
-  @Roles('superuser')
+  @Roles('superuser', 'admin')
   @ApiOperation({ summary: 'Approve a pending account request. Admin requests keep their selected division.' })
   approve(@Param('userId') userId: string, @Req() req: any) {
     const user = this.db.getUser(userId);
     if (!user) throw new NotFoundException('Pending account request not found.');
     if (user.role === 'superuser') throw new BadRequestException('The protected Super Admin account is not part of the approval workflow.');
-    if (!['instructor', 'provider', 'admin'].includes(user.role)) throw new BadRequestException('This account type does not require Super Admin approval.');
+    if (!this.canReview(req.user, user.role)) throw new ForbiddenException('You cannot review this account request.');
     if (user.status !== 'pending') throw new BadRequestException('This account request is no longer pending.');
     if (user.role === 'admin' && !['USER_ADMIN', 'PAYMENT_ADMIN'].includes(String(user.adminTeam || ''))) {
       throw new BadRequestException('Admin request does not have a valid division.');
@@ -76,21 +82,23 @@ export class SuperuserController {
     user.status = 'active';
     const now = new Date().toISOString();
     user.approvedAt = now;
-    this.db.notifications.push({ id: this.db.id('n'), userId: user.id, message: `Your ${user.role === 'admin' ? (user.adminTeam === 'PAYMENT_ADMIN' ? 'Payment Admin' : 'User Admin') : user.role} account has been approved by the Super Admin.`, type: 'success', read: false, createdAt: now });
+    this.db.notifications.push({ id: this.db.id('n'), userId: user.id, message: `Your ${user.role === 'admin' ? (user.adminTeam === 'PAYMENT_ADMIN' ? 'Payment Admin' : 'User Admin') : user.role} account has been approved and is ready to use.`, type: 'success', read: false, createdAt: now });
     this.db.audit('ACCOUNT_APPROVED', req.user.id, { targetUserId: user.id, role: user.role, adminTeam: user.adminTeam || null });
     return { success: true, data: this.db.safeUser(user) };
   }
 
   @Post('approvals/:userId/reject')
-  @Roles('superuser')
-  @ApiOperation({ summary: 'Reject and remove a pending account request' })
+  @Roles('superuser', 'admin')
+  @ApiOperation({ summary: 'Reject a pending account request' })
   reject(@Param('userId') userId: string, @Body() body: RejectionRemarkDto, @Req() req: any) {
     const idx = this.db.users.findIndex(u => u.id === userId);
     if (idx < 0) throw new NotFoundException('Pending account request not found.');
     const user = this.db.users[idx];
     if (user.role === 'superuser') throw new BadRequestException('The protected Super Admin account cannot be rejected or removed.');
-    if (!['instructor', 'provider', 'admin'].includes(user.role) || user.status !== 'pending') throw new BadRequestException('This account request is no longer pending.');
-    this.db.users.splice(idx, 1);
+    if (!this.canReview(req.user, user.role)) throw new ForbiddenException('You cannot review this account request.');
+    if (user.status !== 'pending') throw new BadRequestException('This account request is no longer pending.');
+    if (user.role === 'learner') user.status = 'rejected';
+    else this.db.users.splice(idx, 1);
     this.db.audit('ACCOUNT_REJECTED', req.user.id, { remark: body.remark, targetUserId: user.id, email: user.email, role: user.role, adminTeam: user.adminTeam || null });
     return { success: true, data: { id: userId, email: user.email, role: user.role, adminTeam: user.adminTeam || null } };
   }

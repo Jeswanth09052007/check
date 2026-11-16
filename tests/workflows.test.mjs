@@ -23,6 +23,7 @@ const env = {
   RAZORPAY_KEY_ID: "rzp_test_mockkey",
   RAZORPAY_KEY_SECRET: "mock-secret-value",
   RAZORPAY_WEBHOOK_SECRET: "webhook-test-value",
+  PLUS_MONTHLY_PRICE_INR: "599",
   DEMO_MODE: "true",SMTP_HOST:"",SMTP_FROM:"",
 };
 async function start() {
@@ -437,6 +438,12 @@ await test("Role, onboarding, trading, payment and restart workflows", async (t)
         await stop();
         const file = path.join(dir, "platform.json");
         const state = JSON.parse(await readFile(file, "utf8"));
+        const demo = state.users.find(user => user.id === "u6");
+        state.users.push({ ...demo, id: "plus_test", email: "plus-test@example.test", instructorId: undefined });
+        state.paymentIntents.push({
+          id: "plus_mock", purpose: "PRO_SUBSCRIPTION", subjectId: "plus_test",
+          planId: "plus_monthly", orderId: "order_plus_eval", amount: 599, status: "CREATED",
+        });
         state.paymentIntents.push({
           id: "mock",
           purpose: "PRO_SUBSCRIPTION",
@@ -500,6 +507,34 @@ await test("Role, onboarding, trading, payment and restart workflows", async (t)
         );
       },
     );
+    await t.test("Plus capture adds guidance and a coordinator can be assigned by User Admin", async () => {
+      const plus = await login("plus-test@example.test", "Learn@1234");
+      let access = await req("/admin/learner-guidance", plus.accessToken);
+      assert.equal(access.data.eligible, false);
+      const event = {
+        event: "payment.captured",
+        payload: { payment: { entity: {
+          id: "pay_plus_eval", order_id: "order_plus_eval", amount: 59900, currency: "INR", status: "captured",
+        } } },
+      };
+      const signature = createHmac("sha256", env.RAZORPAY_WEBHOOK_SECRET).update(JSON.stringify(event)).digest("hex");
+      const capture = await req("/payments/razorpay/webhook", null, event, "POST", { "x-razorpay-signature": signature });
+      assert.equal(capture.status, 201);
+      access = await req("/admin/learner-guidance", plus.accessToken);
+      assert.equal(access.data.eligible, true);
+      const request = await req("/admin/learner-guidance/u3", plus.accessToken, {});
+      assert.equal(request.status, 201);
+      const teacher = await login("instructor@indai.com", "Inst@1234");
+      const accepted = await req("/admin/mapping-requests/" + request.data.id + "/accept", teacher.accessToken, {});
+      assert.equal(accepted.data.status, "ACCEPTED");
+      const userAdmin = await login("admin@indai.com", "Admin@1234");
+      const assignment = await req("/admin/course-coordination/plus_test/u3", userAdmin.accessToken, {});
+      assert.equal(assignment.status, 201);
+      const coordination = await req("/admin/course-coordination", plus.accessToken);
+      assert.equal(coordination.data.coordinator.id, "u3");
+      const roster = await req("/admin/course-coordination", teacher.accessToken);
+      assert.ok(roster.data.learners.some(user => user.id === "plus_test"));
+    });
     await t.test(
       "PDF upload uses a relative URL on persistent storage and checks course ownership",
       async () => {
