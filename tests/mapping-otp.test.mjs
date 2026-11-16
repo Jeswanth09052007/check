@@ -40,6 +40,9 @@ test('OTP, password reset and instructor mapping lifecycle',async t=>{
    assert.equal(reviewed.status,'active');
    const approved=await ok('/auth/login/password',null,{email:body.email,password:body.password});
    assert.ok(approved.accessToken);
+   assert.equal(approved.user.learningAccess,false);
+   assert.equal((await req('/courses/published',approved.accessToken)).status,403);
+   assert.equal((await req('/algo/portfolio',approved.accessToken)).status,200);
    const pending=await ok('/auth/register',null,{...body,email:'pending@example.in',role:'instructor',institution:'Test Institute',expertise:'Trading',yearsExp:'3'});
    const p=await ok('/auth/verify-otp',null,{challengeId:pending.challengeId,otp:'111111'});assert.equal(p.pendingApproval,true);assert.equal(p.accessToken,undefined);
   });

@@ -177,6 +177,11 @@ export default function Dashboard({ user, onUser }) {
   );
   const sessionView = <Sessions {...props} openSignal={signals.session} />;
   const courseView = <Courses {...props} openSignal={signals.course} />;
+  const learningLocked = user.role === "learner" && user.learningAccess === false;
+  const upgradeLearning = <Card title="Learning access">
+    <p>Courses, quizzes and challenges are included with Pro, Plus or an eligible institution license.</p>
+    <button className="btn btn-primary mt-16" onClick={() => setTab("subscription")}>View plans</button>
+  </Card>;
   const leaderboard = (
     <Table
       heads={["Rank", "Learner", "Skill Points", "Portfolio"]}
@@ -339,7 +344,7 @@ export default function Dashboard({ user, onUser }) {
         )}
       </>
     ),
-    "view-learning": (
+    "view-learning": learningLocked ? upgradeLearning : (
       <>
         <h3 className="page-title mb-16">Learning Center</h3>
         {courseView}
@@ -387,7 +392,7 @@ export default function Dashboard({ user, onUser }) {
         {sessionView}
       </>
     ),
-    "view-challenges": (
+    "view-challenges": learningLocked ? upgradeLearning : (
       <>
         <h3 className="page-title mb-16">Trading Challenges</h3>
         {assignmentView}

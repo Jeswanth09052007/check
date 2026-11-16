@@ -175,16 +175,22 @@ export class AuthService {
     return { loggedOut: true, revokedRefreshSessions: revoked };
   }
 
+  private accountProfile(user: User) {
+    if (user.role !== 'learner') return this.db.safeUser(user);
+    const learningAccess = this.db.hasLearningAccess(user.id);
+    return { ...this.db.safeUser(user), learningAccess };
+  }
+
   me(userId: string) {
     const user = this.db.getUser(userId);
     if (!user) throw new BadRequestException('User not found.');
-    return this.db.safeUser(user);
+    return this.accountProfile(user);
   }
 
   meAs(requesterId: string, targetId?: string) {
     const requester = this.db.getUser(requesterId);
     if (!requester || requester.status !== 'active') throw new UnauthorizedException('Authenticated user is not active.');
-    if (!targetId || targetId === requesterId) return this.db.safeUser(requester);
+    if (!targetId || targetId === requesterId) return this.accountProfile(requester);
     if (!['superuser', 'admin', 'instructor'].includes(requester.role)) {
       throw new ForbiddenException('You can only view your own authenticated profile.');
     }
@@ -210,7 +216,7 @@ export class AuthService {
       accessExpiresAt: new Date(pair.accessPayload.exp * 1000).toISOString(),
     });
     return {
-      user: this.db.safeUser(user),
+      user: this.accountProfile(user),
       session: {
         userId: user.id,
         role: user.role,

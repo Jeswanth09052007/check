@@ -318,6 +318,13 @@ export class DataStore implements OnModuleInit {
     }
     return Boolean(active) || user.subscriptionTier === 'PRO';
   }
+  hasLearningAccess(userId: string) {
+    if (this.hasPro(userId)) return true;
+    const organizationId = this.getUser(userId)?.organizationId;
+    const organization = organizationId && this.organizations.find(item => item.id === organizationId);
+    return Boolean(organization && organization.status === 'active' &&
+      organization.licenseStatus === 'ACTIVE' && new Date(organization.licenseEndsAt).getTime() > Date.now());
+  }
   hasPlus(userId: string) {
     return this.hasPro(userId) && this.getUser(userId)?.subscriptionTier === 'PLUS';
   }
