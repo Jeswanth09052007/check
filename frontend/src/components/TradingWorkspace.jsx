@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, money } from "../services/api";
 import { useResource } from "../hooks/useResource";
-import { Card, Holdings, Notice, Table } from "./Common";
+import { Card, Notice, Table } from "./Common";
 import StockOrderForm, { orderNames } from "./StockOrderForm";
 import "../styles/trading.css";
 
@@ -22,15 +22,25 @@ export default function TradingWorkspace({ user, initialSymbol = "RELIANCE" }) {
   const [side,setSide] = useState("BUY");
   const [watchlistId,setWatchlistId] = useState("");
   const [busy,setBusy] = useState(false), [error,setError] = useState(""), [notice,setNotice] = useState(""), [period,setPeriod] = useState(30);
-  const instruments = useResource("/algo/search?q="+encodeURIComponent(search), {});
-  useEffect(() => { if (!selected && instruments.data.instruments?.length) setSelected(instruments.data.instruments[0]); }, [instruments.data]);
+  const instrumentPath = "/algo/search?q=" + encodeURIComponent(search);
+  const instruments = useResource(instrumentPath, {});
+  const searchReady = instruments.resolvedPath === instrumentPath;
+  const results = searchReady ? instruments.data.instruments || [] : [];
+  useEffect(() => {
+    if (!selected && instruments.resolvedPath === instrumentPath && instruments.data.instruments?.length) {
+      setSelected(instruments.data.instruments[0]);
+    }
+  }, [instrumentPath, instruments.resolvedPath, instruments.data, selected]);
   const watchlists = useResource(user ? "/watchlists/" + user.id : null);
   const watchlist = watchlists.data.find(list => list.id === watchlistId) ?? watchlists.data[0];
   const stockAdded = watchlist?.symbols?.includes(selected?.trading_symbol?.toUpperCase());
   const key = selected?.instrument_key;
   const quotes = useResource(key ? "/algo/quotes?keys="+encodeURIComponent(key) : null, {}, 5000);
   const end = new Date().toISOString().slice(0,10), start = new Date(Date.now()-period*86400000).toISOString().slice(0,10);
-  const history = useResource(key ? `/algo/candles?key=${encodeURIComponent(key)}&start=${start}&end=${end}&unit=days&interval=1` : null, {});
+  const historyPath = key ? `/algo/candles?key=${encodeURIComponent(key)}&start=${start}&end=${end}&unit=days&interval=1` : null;
+  const history = useResource(historyPath, {});
+  const historyPending = key && (history.loading || history.resolvedPath !== historyPath);
+  const candles = historyPending || history.error ? [] : history.data.candles;
   const quote = quotes.error ? null : quotes.data.quotes?.[key];
   const last = Number(quote?.last_price ?? NaN);
   const hasQuote = Number.isFinite(last) && last > 0;
@@ -48,8 +58,15 @@ export default function TradingWorkspace({ user, initialSymbol = "RELIANCE" }) {
     <Notice error={error || instruments.error || quotes.error || portfolio.error || status.error || watchlists.error}/>
     {notice && <p className="alert alert-blue" role="status">{notice}</p>}
     <div className="stock-grid">
-      <Card title="Find stocks"><form className="stock-search" onSubmit={e=>{e.preventDefault();setSearch(query.trim());}}><input className="form-input" aria-label="Search stocks" placeholder="Search company or symbol" value={query} onChange={e=>setQuery(e.target.value)}/><button className="btn btn-primary" disabled={!query.trim()}>Search</button></form>
-        <div className="stock-results">{(instruments.data.instruments||[]).map(s=><button type="button" key={s.instrument_key} className={"stock-result "+(s.instrument_key===key?"selected":"")} disabled={busy} onClick={()=>{setSelected(s);setError("");}}><strong>{s.trading_symbol}</strong><span>{s.name || s.exchange}</span></button>)}{!instruments.loading && !instruments.data.instruments?.length && <p>No stocks found.</p>}</div>
+      <Card title="Find stocks"><form className="stock-search" onSubmit={event => {
+        event.preventDefault();
+        const next = query.trim();
+        if (next && next !== search) {
+          setSelected(null);
+          setSearch(next);
+        }
+      }}><input className="form-input" aria-label="Search stocks" placeholder="Search company or symbol" value={query} onChange={e=>setQuery(e.target.value)}/><button className="btn btn-primary" disabled={!query.trim()}>Search</button></form>
+        <div className="stock-results">{results.map(s=><button type="button" key={s.instrument_key} className={"stock-result "+(s.instrument_key===key?"selected":"")} disabled={busy} onClick={()=>{setSelected(s);setError("");}}><strong>{s.trading_symbol}</strong><span>{[s.name, s.exchange].filter(Boolean).join(" · ")}</span></button>)}{!searchReady && !instruments.error && <p role="status">Searching…</p>}{searchReady && !results.length && <p>No stocks found.</p>}</div>
         <p className="card-subtitle">{status.data.hasToken?"NSE / BSE equity search":"Configure Upstox on the server for exchange market data. Demo stocks are available now."}</p>
       </Card>
       <Card title={selected?.trading_symbol || "Select a stock"} subtitle={selected ? [selected.name, selected.exchange].filter(Boolean).join(" · ") : "NSE / BSE equities"}
@@ -61,9 +78,9 @@ export default function TradingWorkspace({ user, initialSymbol = "RELIANCE" }) {
           {new Date(quote.asof).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST
         </time></>}</p>
         <Notice error={history.error}/>
-        {history.loading && key ? <div className="stock-chart-empty">Loading price history…</div>
-          : <PriceChart candles={history.error ? [] : history.data.candles}/>}
-        {!!history.data.candles?.length && !history.loading && !history.error && <p className="card-subtitle">Daily candles · {history.data.candles[0].time.slice(0, 10)} to {history.data.candles.at(-1).time.slice(0, 10)}</p>}
+        {historyPending && !history.error ? <div className="stock-chart-empty">Loading price history…</div>
+          : <PriceChart candles={candles}/>}
+        {!!candles?.length && <p className="card-subtitle">Daily candles · {candles[0].time.slice(0, 10)} to {candles.at(-1).time.slice(0, 10)}</p>}
         {user && watchlist && <div className="watchlist-controls">
           <div>
             <label className="form-label" htmlFor="trade-watchlist">Add to watchlist</label>
@@ -79,7 +96,7 @@ export default function TradingWorkspace({ user, initialSymbol = "RELIANCE" }) {
           })}>{stockAdded ? "Already added" : "+ Add to watchlist"}</button>
         </div>}
       </Card>
-      <Card title="Place an order" subtitle="Virtual funds · No broker execution">
+      <Card title={selected ? "Order · " + selected.trading_symbol : "Place an order"} subtitle="Virtual funds">
         <div className="stock-side">
           <button className={"btn "+(side==="BUY"?"btn-green":"btn-secondary")} disabled={busy} aria-pressed={side==="BUY"} onClick={()=>setSide("BUY")}>Buy</button>
           <button className={"btn "+(side==="SELL"?"btn-primary":"btn-secondary")} disabled={busy} aria-pressed={side==="SELL"} onClick={()=>setSide("SELL")}>Sell</button>
@@ -91,9 +108,6 @@ export default function TradingWorkspace({ user, initialSymbol = "RELIANCE" }) {
       </Card>
     </div>
     <div className="stock-account">
-      <Card title="Your holdings" subtitle={`Portfolio ${money(portfolio.data.netWorth)} · Cash ${money(portfolio.data.cash)}`}>
-        <Holdings positions={portfolio.data.positions||[]}/>
-      </Card>
       <Card title="Orders" subtitle="Conditional orders use sampled paper quotes."
         actions={<button className="btn btn-secondary btn-sm" disabled={busy} onClick={()=>action(async()=>{
           await api("/algo/orders/process","POST",{});portfolio.reload();setNotice("Pending orders checked against current quotes.");

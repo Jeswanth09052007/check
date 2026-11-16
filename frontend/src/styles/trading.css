@@ -43,3 +43,23 @@
   outline: 2px solid var(--blue);
   outline-offset: -2px;
 }
+
+.stock-grid {
+  grid-template-columns: minmax(190px, 1fr) minmax(0, 3fr) minmax(240px, 1.35fr);
+  gap: 16px;
+}
+.stock-grid > .card { min-width: 0; }
+.stock-side { margin-bottom: 12px; }
+.stock-account { overflow-x: auto; }
+@media (max-width: 1200px) {
+  .stock-grid { grid-template-columns: minmax(0, 1.65fr) minmax(240px, 1fr); }
+  .stock-grid > .card:first-child { grid-column: 1 / -1; }
+  .stock-grid > .card:last-child { grid-column: auto; }
+  .stock-results { max-height: 160px; }
+}
+@media (max-width: 720px) {
+  .stock-grid { grid-template-columns: minmax(0, 1fr); }
+  .stock-grid > .card:first-child { grid-column: auto; }
+  .stock-results { max-height: 120px; }
+  .stock-workspace-header { position: sticky; top: 0; background: var(--white); padding-block: 8px; z-index: 1; }
+}

@@ -4,7 +4,8 @@ export function useResource(path, initial = [], poll = 0) {
   const [data, setData] = useState(initial),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true),
-    [version, setVersion] = useState(0);
+    [version, setVersion] = useState(0),
+    [resolvedPath, setResolvedPath] = useState(null);
   const reload = useCallback(() => setVersion((v) => v + 1), []);
   useEffect(() => {
     let active = true;
@@ -16,6 +17,7 @@ export function useResource(path, initial = [], poll = 0) {
         const value = await api(path);
         if (active) {
           setData(value);
+          setResolvedPath(path);
           setError("");
         }
       } catch (e) {
@@ -47,5 +49,5 @@ export function useResource(path, initial = [], poll = 0) {
       if (timer) clearInterval(timer);
     };
   }, [path, version, poll]);
-  return { data, error, loading, reload, setData };
+  return { data, error, loading, reload, setData, resolvedPath };
 }
